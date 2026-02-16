@@ -1,0 +1,32 @@
+# Local Project Context - [Project Name]
+
+> **This file contains sensitive information and is gitignored.**
+
+## Cloud Account Details
+
+| Property | Value |
+|----------|-------|
+| Account/Subscription | [account ID or name] |
+| Region | [primary region] |
+| Project/Resource Group | [name] |
+
+## Infrastructure Details
+
+[Resource IDs, cluster details, IP addresses, etc.]
+
+## GitHub Repository
+
+- **Organization:** davidshaevel-dot-com
+- **Repository:** [repo-name]
+
+## Linear Project
+
+- **Team:** Team Tacocat
+- **Project URL:** [Linear project URL]
+
+## Cost Summary
+
+| Resource | Monthly Cost |
+|----------|-------------|
+| ... | ... |
+| **Total** | **$X/month** |

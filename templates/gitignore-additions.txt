@@ -1,0 +1,3 @@
+# Agent context files (sensitive/local)
+CLAUDE.local.md
+SESSION_LOG.md

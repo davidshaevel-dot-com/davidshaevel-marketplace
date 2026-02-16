@@ -1,0 +1,79 @@
+# [Project Name] - Claude Context
+
+<!-- If CLAUDE.local.md exists, read it for additional context (account IDs, resource details, etc.) -->
+
+## Project Overview
+
+[Brief description of the project and its purpose.]
+
+**Key Technologies:**
+- **Infrastructure:** [e.g., Terraform, Kubernetes, Helm]
+- **Cloud:** [e.g., Azure, GCP, AWS]
+- **Languages:** [e.g., Go, TypeScript, Python]
+
+**Project Management:**
+- **Issue Tracking:** Linear (Team Tacocat)
+- **Version Control:** GitHub
+- **Branching Strategy:** Feature branches with PR workflow
+
+---
+
+## Architecture
+
+```
+[Architecture diagram]
+```
+
+---
+
+## Repository Structure
+
+```
+[project-name]/
+│
+├── .bare/                             # Bare git repository
+├── .git                               # Points to .bare
+│
+├── main/                              # Main branch worktree
+│   ├── CLAUDE.md                      # Public project context (this file)
+│   ├── CLAUDE.local.md                # Sensitive project context (gitignored)
+│   ├── SESSION_LOG.md                 # Cross-agent memory (gitignored)
+│   ├── .envrc                         # Environment variables (gitignored)
+│   ├── .envrc.example                 # Template for .envrc (committed)
+│   └── ...
+│
+└── <feature-worktrees>/               # Feature branch worktrees (flat!)
+```
+
+---
+
+## Important File Locations
+
+[Key file paths and their purposes]
+
+---
+
+## Helpful Commands
+
+```bash
+# [Project-specific commands go here]
+```
+
+---
+
+## Environment Variables
+
+Environment-specific values are stored in `.envrc` (gitignored). A committed `.envrc.example` documents the required variables.
+
+| Variable | Used By | Purpose |
+|----------|---------|---------|
+| ... | ... | ... |
+
+Scripts will error with a clear message if a required env var is missing.
+
+---
+
+## References
+
+- **Linear Project:** [Project Name](https://linear.app/davidshaevel-dot-com/project/...)
+- **Documentation:** [links]

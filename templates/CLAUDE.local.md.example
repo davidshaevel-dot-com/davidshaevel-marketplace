@@ -1,0 +1,36 @@
+# Local Project Context - Example Project
+
+> **This file contains sensitive information and is gitignored.**
+
+## Cloud Account Details
+
+| Property | Value |
+|----------|-------|
+| Account/Subscription | 123456789012 |
+| Region | us-east-1 |
+| Project/Resource Group | example-rg |
+
+## Infrastructure Details
+
+- **Cluster Name:** example-cluster
+- **Cluster Endpoint:** https://example.us-east-1.eks.amazonaws.com
+- **Node Pool:** Standard_B2ms (2 vCPU, 8 GB RAM)
+
+## GitHub Repository
+
+- **Organization:** davidshaevel-dot-com
+- **Repository:** example-project
+
+## Linear Project
+
+- **Team:** Team Tacocat
+- **Project URL:** https://linear.app/davidshaevel-dot-com/project/example-project-abc123
+
+## Cost Summary
+
+| Resource | Monthly Cost |
+|----------|-------------|
+| Compute (2 nodes) | $60/month |
+| Database | $15/month |
+| Networking | $5/month |
+| **Total** | **$80/month** |
