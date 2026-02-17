@@ -55,14 +55,18 @@ related-issues: TT-XXX
 
 **CRITICAL: NEVER MERGE WITHOUT CODE REVIEW**
 
-1. **Create PR** with descriptive title and comprehensive description
-2. **Wait for review** (Gemini Code Assist or human reviewer)
-3. **Address feedback:**
+1. **Push branch** to remote before creating the PR: `git push -u origin <branch-name>`
+2. **Create PR** with descriptive title and comprehensive description (always use `--head <branch-name>` in worktree repos):
+   ```bash
+   gh pr create --head <branch-name> --title "..." --body "..."
+   ```
+3. **Wait for review** (Gemini Code Assist or human reviewer)
+4. **Address feedback:**
    - CRITICAL and HIGH issues: Must fix
    - MEDIUM issues: Evaluate and decide
    - LOW issues: Fix if trivial, decline if YAGNI
-4. **Post summary comment** with all fixes addressed
-5. **Merge only after** all review feedback resolved
+5. **Post summary comment** with all fixes addressed
+6. **Merge only after** all review feedback resolved
 
 **Merge Strategy:** Always use **Squash and Merge** for pull requests.
 
@@ -148,20 +152,25 @@ git worktree remove <worktree-folder-name>
 
 ### Worktree Cleanup - IMPORTANT
 
-**Before removing a worktree**, copy any gitignored files to the main worktree:
+**Before removing a worktree**, copy gitignored config files and merge session history:
 
 ```bash
+# Copy config files (safe to overwrite — these are identical across worktrees)
 cp <worktree-name>/.envrc main/.envrc
 cp <worktree-name>/CLAUDE.local.md main/CLAUDE.local.md
-cp <worktree-name>/SESSION_LOG.md main/SESSION_LOG.md
+
+# NEVER cp SESSION_LOG.md — always MERGE session history
+# Use the session-handoff skill's "Worktree Cleanup" process to merge
+# the worktree's session history into main/SESSION_LOG.md by date
 ```
 
 **Workflow:**
 1. Merge PR: `gh pr merge <PR_NUMBER> --squash`
 2. Pull changes into main worktree: `cd main && git pull`
 3. Delete remote branch: `git push origin --delete <branch-name>`
-4. Copy gitignored files from feature worktree to main
-5. Remove the worktree: `git worktree remove <worktree-name>`
+4. Copy gitignored config files from feature worktree to main (`.envrc`, `CLAUDE.local.md`)
+5. **Merge** worktree's SESSION_LOG.md into main's SESSION_LOG.md (see `session-handoff` skill — Worktree Cleanup section)
+6. Remove the worktree: `git worktree remove <worktree-name>`
 
 ---
 
