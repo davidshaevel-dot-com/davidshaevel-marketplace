@@ -45,7 +45,7 @@ This skill is used automatically:
 
 1. **Overwrite** the "Current State" section with current information
 2. **Prepend** a new entry to the "Session History" section
-3. **Trim** Session History to the last 10 sessions (remove oldest entries beyond 10)
+3. **Trim** Session History to the last 30 sessions (remove oldest entries beyond 30)
 
 #### Bare + worktree repos
 
@@ -65,7 +65,7 @@ When a feature worktree is being removed after a PR merge, the worktree's sessio
 3. **Interleave** both sets of entries by date (newest first)
 4. Update main's **Current State** to reflect the post-merge project state (e.g., mark the completed work as done, update next steps)
 5. Write the merged result to `main/SESSION_LOG.md`
-6. **Trim** Session History to the last 10 entries
+6. **Trim** Session History to the last 30 entries
 
 **Important:** Do NOT use `cp <worktree>/SESSION_LOG.md main/SESSION_LOG.md` — this destroys session history from other worktrees that was previously merged into main.
 
