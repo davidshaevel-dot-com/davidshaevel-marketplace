@@ -32,11 +32,15 @@ This skill is used automatically:
 
 1. Check if `.bare/` directory exists at cwd — if so, this is a bare+worktree repo
 2. Run `git worktree list` to discover all worktrees
-3. Check each worktree directory for a `SESSION_LOG.md`
-4. Based on how many are found:
+3. Use **built-in Grep** to find all SESSION_LOG.md files and extract active work in a single call:
+   ```
+   Grep pattern="Active work:" glob="**/SESSION_LOG.md" output_mode="content"
+   ```
+   **Do NOT** use bash `for` loops, shell `grep`, `find`, or piped commands to scan worktrees — these complex commands can't be pattern-matched by the command allowlist and cause repeated approval prompts every session. Always prefer built-in tools (Grep, Glob, Read) over bash equivalents for file scanning.
+4. Based on how many SESSION_LOG.md files are found:
    - **Zero found:** This is a fresh start, no context to restore
    - **One found:** Read it automatically and confirm with the user
-   - **Multiple found:** Show a summary of each (worktree name, branch, active work from the "Current State" `Active work:` line) and ask the user which worktree to resume in
+   - **Multiple found:** Show a summary of each (worktree name, branch, active work from the Grep results) and ask the user which worktree to resume in
 5. Read the selected worktree's SESSION_LOG.md and summarize as usual
 
 ### At Session End
