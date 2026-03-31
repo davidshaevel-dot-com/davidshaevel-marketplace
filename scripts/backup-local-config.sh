@@ -71,20 +71,24 @@ if ! rclone listremotes | grep -q "^${REMOTE_NAME}:$"; then
   exit 1
 fi
 
-# --- Detect repo name ---
-# For bare+worktree repos, the repo root contains .bare/
-# For standard repos, the repo root contains .git/
-if [[ -d "$REPO_PATH/.bare" ]]; then
-  REPO_NAME=$(basename "$REPO_PATH")
-  IS_BARE_WORKTREE=true
-elif [[ -d "$REPO_PATH/.git" ]] || [[ -f "$REPO_PATH/.git" ]]; then
-  REPO_NAME=$(basename "$REPO_PATH")
-  IS_BARE_WORKTREE=false
-else
+# --- Detect repo type and resolve root ---
+# Use git to detect repo structure (works even if invoked from inside a worktree)
+if ! git -C "$REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Error: $REPO_PATH does not appear to be a git repository." >&2
-  echo "No .bare/ or .git/ directory found." >&2
   exit 1
 fi
+
+COMMON_DIR=$(git -C "$REPO_PATH" rev-parse --git-common-dir)
+if [[ "$COMMON_DIR" == *".bare"* ]]; then
+  # Bare+worktree: resolve to the parent of the .bare directory
+  REPO_PATH="$(cd "$COMMON_DIR/.." && pwd)"
+  IS_BARE_WORKTREE=true
+else
+  # Standard repo: resolve to the worktree root
+  REPO_PATH="$(git -C "$REPO_PATH" rev-parse --show-toplevel)"
+  IS_BARE_WORKTREE=false
+fi
+REPO_NAME=$(basename "$REPO_PATH")
 
 # --- Build file list ---
 # Start with global files (use while-read for Bash 3.2 compatibility)
@@ -118,7 +122,7 @@ backup_file() {
     return 0
   fi
 
-  if rclone copy "$src" "$dest" 2>&1; then
+  if rclone copy "$src" "$dest/" 2>&1; then
     echo "  [ok] $src -> $dest"
   else
     echo "  [FAILED] $src -> $dest" >&2
