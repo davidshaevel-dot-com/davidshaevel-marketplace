@@ -118,10 +118,10 @@ backup_file() {
   fi
 }
 
-# --- Counters ---
-BACKED_UP=0
-SKIPPED=0
-FAILED=0
+# --- Tracking arrays ---
+BACKED_UP_FILES=()
+SKIPPED_FILES=()
+FAILED_FILES=()
 
 # --- Execute backup ---
 if [[ "$IS_BARE_WORKTREE" == "true" ]]; then
@@ -139,12 +139,12 @@ if [[ "$IS_BARE_WORKTREE" == "true" ]]; then
       SRC="$WORKTREE_PATH/$file"
       if [[ -f "$SRC" ]]; then
         if backup_file "$SRC" "$DEST_DIR"; then
-          ((BACKED_UP++))
+          BACKED_UP_FILES+=("$SRC")
         else
-          ((FAILED++))
+          FAILED_FILES+=("$SRC")
         fi
       else
-        ((SKIPPED++))
+        SKIPPED_FILES+=("$SRC")
       fi
     done
   done < <(git -C "$REPO_PATH" worktree list)
@@ -156,12 +156,12 @@ else
     SRC="$REPO_PATH/$file"
     if [[ -f "$SRC" ]]; then
       if backup_file "$SRC" "$DEST_DIR"; then
-        ((BACKED_UP++))
+        BACKED_UP_FILES+=("$SRC")
       else
-        ((FAILED++))
+        FAILED_FILES+=("$SRC")
       fi
     else
-      ((SKIPPED++))
+      SKIPPED_FILES+=("$SRC")
     fi
   done
 fi
@@ -169,10 +169,28 @@ fi
 # --- Summary ---
 echo ""
 echo "backup-local-config complete:"
-echo "  Backed up: $BACKED_UP"
-echo "  Skipped (not found): $SKIPPED"
-echo "  Failed: $FAILED"
+echo ""
+echo "  Backed up (${#BACKED_UP_FILES[@]}):"
+if [[ ${#BACKED_UP_FILES[@]} -gt 0 ]]; then
+  for f in "${BACKED_UP_FILES[@]}"; do echo "    $f"; done
+else
+  echo "    (none)"
+fi
+echo ""
+echo "  Skipped — not found (${#SKIPPED_FILES[@]}):"
+if [[ ${#SKIPPED_FILES[@]} -gt 0 ]]; then
+  for f in "${SKIPPED_FILES[@]}"; do echo "    $f"; done
+else
+  echo "    (none)"
+fi
+echo ""
+echo "  Failed (${#FAILED_FILES[@]}):"
+if [[ ${#FAILED_FILES[@]} -gt 0 ]]; then
+  for f in "${FAILED_FILES[@]}"; do echo "    $f"; done
+else
+  echo "    (none)"
+fi
 
-if [[ "$FAILED" -gt 0 ]]; then
+if [[ ${#FAILED_FILES[@]} -gt 0 ]]; then
   exit 1
 fi
