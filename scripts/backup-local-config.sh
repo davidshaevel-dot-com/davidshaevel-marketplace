@@ -100,7 +100,79 @@ fi
 # Deduplicate
 mapfile -t FILE_LIST < <(printf '%s\n' "${FILE_LIST[@]}" | sort -u)
 
-echo "backup-local-config: repo detection complete"
-echo "  Repo name: $REPO_NAME"
-echo "  Bare+worktree: $IS_BARE_WORKTREE"
-echo "  Files to back up: ${FILE_LIST[*]}"
+# --- Backup function ---
+backup_file() {
+  local src="$1"
+  local dest="$2"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "  [dry-run] would copy: $src -> $dest"
+    return 0
+  fi
+
+  if rclone copy "$src" "$dest" 2>&1; then
+    echo "  [ok] $src -> $dest"
+  else
+    echo "  [FAILED] $src -> $dest" >&2
+    return 1
+  fi
+}
+
+# --- Counters ---
+BACKED_UP=0
+SKIPPED=0
+FAILED=0
+
+# --- Execute backup ---
+if [[ "$IS_BARE_WORKTREE" == "true" ]]; then
+  # Bare+worktree: back up files from each worktree
+  while IFS= read -r line; do
+    WORKTREE_PATH=$(echo "$line" | awk '{print $1}')
+    # Skip the bare repo entry itself
+    if [[ "$WORKTREE_PATH" == *"/.bare" ]] || [[ "$WORKTREE_PATH" == "$REPO_PATH/.bare" ]]; then
+      continue
+    fi
+    WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+    DEST_DIR="$BACKUP_DIR/$REPO_NAME/$WORKTREE_NAME"
+
+    for file in "${FILE_LIST[@]}"; do
+      SRC="$WORKTREE_PATH/$file"
+      if [[ -f "$SRC" ]]; then
+        if backup_file "$SRC" "$DEST_DIR"; then
+          ((BACKED_UP++))
+        else
+          ((FAILED++))
+        fi
+      else
+        ((SKIPPED++))
+      fi
+    done
+  done < <(git -C "$REPO_PATH" worktree list)
+else
+  # Standard repo: back up files from repo root
+  DEST_DIR="$BACKUP_DIR/$REPO_NAME"
+
+  for file in "${FILE_LIST[@]}"; do
+    SRC="$REPO_PATH/$file"
+    if [[ -f "$SRC" ]]; then
+      if backup_file "$SRC" "$DEST_DIR"; then
+        ((BACKED_UP++))
+      else
+        ((FAILED++))
+      fi
+    else
+      ((SKIPPED++))
+    fi
+  done
+fi
+
+# --- Summary ---
+echo ""
+echo "backup-local-config complete:"
+echo "  Backed up: $BACKED_UP"
+echo "  Skipped (not found): $SKIPPED"
+echo "  Failed: $FAILED"
+
+if [[ "$FAILED" -gt 0 ]]; then
+  exit 1
+fi
