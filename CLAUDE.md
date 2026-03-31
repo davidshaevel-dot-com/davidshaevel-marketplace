@@ -53,6 +53,12 @@ davidshaevel-marketplace/
 │   ├── conventions/                   # Auto-injected conventions
 │   │   └── development-standards.md   # Git, PR, worktree, Linear conventions
 │   │
+│   ├── config/                        # Plugin configuration
+│   │   └── backup-config.json         # Backup file list and destination config
+│   │
+│   ├── scripts/                       # Plugin scripts
+│   │   └── backup-local-config.sh     # Backs up gitignored files to Google Drive
+│   │
 │   ├── hooks/                         # Plugin hooks
 │   │   ├── hooks.json                 # Hook definitions
 │   │   ├── session-start.sh           # Session start hook script
@@ -61,7 +67,8 @@ davidshaevel-marketplace/
 │   ├── skills/                        # Plugin skills
 │   │   ├── bootstrap-project/SKILL.md # Project initialization skill
 │   │   ├── resolve-code-review/SKILL.md # Code review resolution skill
-│   │   └── session-handoff/SKILL.md   # Session handoff skill
+│   │   ├── session-handoff/SKILL.md   # Session handoff skill
+│   │   └── backup-local-config/SKILL.md # Local file backup skill
 │   │
 │   ├── templates/                     # Project templates
 │   │   ├── CLAUDE.md.template         # CLAUDE.md template
@@ -88,8 +95,11 @@ davidshaevel-marketplace/
 |------|---------|
 | `.claude-plugin/plugin.json` | Plugin manifest — defines skills, commands, hooks |
 | `conventions/development-standards.md` | Development conventions injected at session start |
+| `config/backup-config.json` | Backup destination and file list configuration |
+| `scripts/backup-local-config.sh` | Shell script that backs up gitignored files via rclone |
 | `hooks/session-start.sh` | Hook that injects conventions into Claude context |
 | `skills/*/SKILL.md` | Skill definitions (bootstrap, code review, session handoff) |
+| `skills/backup-local-config/SKILL.md` | On-demand backup skill definition |
 | `templates/*` | Project bootstrap templates |
 
 ---
