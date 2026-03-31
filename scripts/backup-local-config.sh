@@ -28,8 +28,9 @@ for arg in "$@"; do
   esac
 done
 
-# Default to current directory if no path given
+# Default to current directory if no path given, then resolve to absolute path
 REPO_PATH="${REPO_PATH:-$(pwd)}"
+REPO_PATH="$(cd "$REPO_PATH" && pwd)"
 
 # --- Resolve config path ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,10 +88,10 @@ fi
 
 # --- Build file list ---
 # Start with global files
-mapfile -t FILE_LIST < <(jq -r '.globalFiles[]' "$CONFIG_FILE")
+mapfile -t FILE_LIST < <(jq -r '.globalFiles[]?' "$CONFIG_FILE")
 
 # Merge repo-specific additional files if configured
-ADDITIONAL=$(jq -r --arg repo "$REPO_NAME" '.repoOverrides[$repo].additionalFiles // [] | .[]' "$CONFIG_FILE")
+ADDITIONAL=$(jq -r --arg repo "$REPO_NAME" '.repoOverrides?[$repo]?.additionalFiles? // [] | .[]' "$CONFIG_FILE")
 if [[ -n "$ADDITIONAL" ]]; then
   while IFS= read -r f; do
     FILE_LIST+=("$f")
@@ -126,28 +127,33 @@ FAILED_FILES=()
 # --- Execute backup ---
 if [[ "$IS_BARE_WORKTREE" == "true" ]]; then
   # Bare+worktree: back up files from each worktree
+  # Use --porcelain for reliable parsing (handles spaces in paths)
   while IFS= read -r line; do
-    WORKTREE_PATH=$(echo "$line" | awk '{print $1}')
-    # Skip the bare repo entry itself
-    if [[ "$WORKTREE_PATH" == *"/.bare" ]] || [[ "$WORKTREE_PATH" == "$REPO_PATH/.bare" ]]; then
-      continue
-    fi
-    WORKTREE_NAME=$(basename "$WORKTREE_PATH")
-    DEST_DIR="$BACKUP_DIR/$REPO_NAME/$WORKTREE_NAME"
+    if [[ "$line" == "worktree "* ]]; then
+      WORKTREE_PATH="${line#worktree }"
+    elif [[ "$line" == "bare" ]]; then
+      # This is the bare repo entry — skip it
+      WORKTREE_PATH=""
+    elif [[ -z "$line" && -n "$WORKTREE_PATH" ]]; then
+      # Blank line marks end of a worktree block — process it
+      WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+      DEST_DIR="$BACKUP_DIR/$REPO_NAME/$WORKTREE_NAME"
 
-    for file in "${FILE_LIST[@]}"; do
-      SRC="$WORKTREE_PATH/$file"
-      if [[ -f "$SRC" ]]; then
-        if backup_file "$SRC" "$DEST_DIR"; then
-          BACKED_UP_FILES+=("$SRC")
+      for file in "${FILE_LIST[@]}"; do
+        SRC="$WORKTREE_PATH/$file"
+        if [[ -f "$SRC" ]]; then
+          if backup_file "$SRC" "$DEST_DIR"; then
+            BACKED_UP_FILES+=("$SRC")
+          else
+            FAILED_FILES+=("$SRC")
+          fi
         else
-          FAILED_FILES+=("$SRC")
+          SKIPPED_FILES+=("$SRC")
         fi
-      else
-        SKIPPED_FILES+=("$SRC")
-      fi
-    done
-  done < <(git -C "$REPO_PATH" worktree list)
+      done
+      WORKTREE_PATH=""
+    fi
+  done < <(git -C "$REPO_PATH" worktree list --porcelain; echo "")
 else
   # Standard repo: back up files from repo root
   DEST_DIR="$BACKUP_DIR/$REPO_NAME"
