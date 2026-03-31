@@ -120,12 +120,14 @@ Then edit `config/backup-config.json` (this file is gitignored since it contains
   "backupDir": "gdrive:session-backups",
   "globalFiles": [
     "SESSION_LOG.md",
-    "CLAUDE.local.md",
-    ".envrc"
+    "CLAUDE.local.md"
   ],
   "repoOverrides": {
     "my-project": {
-      "additionalFiles": [".env"]
+      "additionalFiles": [
+        ".envrc",
+        ".env"
+      ]
     }
   }
 }
@@ -139,7 +141,7 @@ Then edit `config/backup-config.json` (this file is gitignored since it contains
 
 **To add a new file to back up everywhere:** Add it to `globalFiles`.
 
-**To add a file for one repo only:** Add it to that repo's `additionalFiles` in `repoOverrides`. The repo key is the directory name (e.g., `davidshaevel-k8s-platform`).
+**To add a file for one repo only:** Add it to that repo's `additionalFiles` in `repoOverrides`. The repo key is the directory name (e.g., `my-infra-platform`).
 
 ### Usage
 
@@ -166,23 +168,24 @@ Files are organized by repo and worktree:
 
 ```
 session-backups/
-├── job-searches-2026-q1/
+├── my-web-app/
 │   ├── main/
 │   │   ├── SESSION_LOG.md
 │   │   └── CLAUDE.local.md
-│   ├── tt-269-centre-technologies/
+│   ├── feature-auth/
 │   │   └── ...
-│   └── fastest-to-start-income/
+│   └── feature-payments/
 │       └── ...
-├── davidshaevel-k8s-platform/
+├── my-infra-platform/
 │   ├── main/
 │   │   ├── SESSION_LOG.md
 │   │   ├── CLAUDE.local.md
 │   │   ├── .envrc
 │   │   └── .env
 │   └── ...
-└── dochound/
-    └── ...
+└── my-cli-tool/
+    ├── SESSION_LOG.md
+    └── CLAUDE.local.md
 ```
 
 - **Bare+worktree repos:** `<repo-name>/<worktree-name>/<file>`

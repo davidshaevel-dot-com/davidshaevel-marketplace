@@ -2,12 +2,14 @@
   "backupDir": "gdrive:session-backups",
   "globalFiles": [
     "SESSION_LOG.md",
-    "CLAUDE.local.md",
-    ".envrc"
+    "CLAUDE.local.md"
   ],
   "repoOverrides": {
     "my-project": {
-      "additionalFiles": [".env"]
+      "additionalFiles": [
+        ".envrc",
+        ".env"
+      ]
     }
   }
 }
