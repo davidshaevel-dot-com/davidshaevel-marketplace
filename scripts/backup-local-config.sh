@@ -70,8 +70,37 @@ if ! rclone listremotes | grep -q "^${REMOTE_NAME}:$"; then
   exit 1
 fi
 
-echo "backup-local-config: argument parsing and dependency checks passed"
-echo "  Repo path: $REPO_PATH"
-echo "  Config: $CONFIG_FILE"
-echo "  Backup dir: $BACKUP_DIR"
-echo "  Dry run: $DRY_RUN"
+# --- Detect repo name ---
+# For bare+worktree repos, the repo root contains .bare/
+# For standard repos, the repo root contains .git/
+if [[ -d "$REPO_PATH/.bare" ]]; then
+  REPO_NAME=$(basename "$REPO_PATH")
+  IS_BARE_WORKTREE=true
+elif [[ -d "$REPO_PATH/.git" ]] || [[ -f "$REPO_PATH/.git" ]]; then
+  REPO_NAME=$(basename "$REPO_PATH")
+  IS_BARE_WORKTREE=false
+else
+  echo "Error: $REPO_PATH does not appear to be a git repository." >&2
+  echo "No .bare/ or .git/ directory found." >&2
+  exit 1
+fi
+
+# --- Build file list ---
+# Start with global files
+mapfile -t FILE_LIST < <(jq -r '.globalFiles[]' "$CONFIG_FILE")
+
+# Merge repo-specific additional files if configured
+ADDITIONAL=$(jq -r --arg repo "$REPO_NAME" '.repoOverrides[$repo].additionalFiles // [] | .[]' "$CONFIG_FILE")
+if [[ -n "$ADDITIONAL" ]]; then
+  while IFS= read -r f; do
+    FILE_LIST+=("$f")
+  done <<< "$ADDITIONAL"
+fi
+
+# Deduplicate
+mapfile -t FILE_LIST < <(printf '%s\n' "${FILE_LIST[@]}" | sort -u)
+
+echo "backup-local-config: repo detection complete"
+echo "  Repo name: $REPO_NAME"
+echo "  Bare+worktree: $IS_BARE_WORKTREE"
+echo "  Files to back up: ${FILE_LIST[*]}"
