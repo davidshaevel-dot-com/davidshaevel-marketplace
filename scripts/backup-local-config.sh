@@ -126,7 +126,7 @@ backup_file() {
     return 0
   fi
 
-  if rclone copy --non-interactive "$src" "$dest/" 2>&1; then
+  if rclone copy "$src" "$dest/" 2>&1; then
     echo "  [ok] $src -> $dest"
   else
     echo "  [FAILED] $src -> $dest" >&2
