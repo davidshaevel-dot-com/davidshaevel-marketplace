@@ -30,6 +30,10 @@ done
 
 # Default to current directory if no path given, then resolve to absolute path
 REPO_PATH="${REPO_PATH:-$(pwd)}"
+if [[ ! -d "$REPO_PATH" ]]; then
+  echo "Error: '$REPO_PATH' is not a directory." >&2
+  exit 1
+fi
 REPO_PATH="$(cd "$REPO_PATH" && pwd)"
 
 # --- Resolve config path ---
@@ -79,7 +83,7 @@ if ! git -C "$REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 COMMON_DIR=$(git -C "$REPO_PATH" rev-parse --git-common-dir)
-if [[ "$COMMON_DIR" == *".bare"* ]]; then
+if [[ "$COMMON_DIR" == */.bare || "$COMMON_DIR" == */.bare/* ]]; then
   # Bare+worktree: resolve to the parent of the .bare directory
   REPO_PATH="$(cd "$COMMON_DIR/.." && pwd)"
   IS_BARE_WORKTREE=true
