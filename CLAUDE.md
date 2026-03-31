@@ -54,7 +54,8 @@ davidshaevel-marketplace/
 │   │   └── development-standards.md   # Git, PR, worktree, Linear conventions
 │   │
 │   ├── config/                        # Plugin configuration
-│   │   └── backup-config.json         # Backup file list and destination config
+│   │   ├── backup-config.json         # Backup config (gitignored, repo-specific)
+│   │   └── backup-config.json.example # Backup config template (committed)
 │   │
 │   ├── scripts/                       # Plugin scripts
 │   │   └── backup-local-config.sh     # Backs up gitignored files to Google Drive

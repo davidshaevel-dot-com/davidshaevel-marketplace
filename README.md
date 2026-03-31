@@ -107,18 +107,25 @@ Back up gitignored files (SESSION_LOG.md, CLAUDE.local.md, .envrc, .env, etc.) t
 
 ### Configuration
 
-Edit `config/backup-config.json` in the plugin directory:
+Copy the example config and edit it:
+
+```bash
+cp config/backup-config.json.example config/backup-config.json
+```
+
+Then edit `config/backup-config.json` (this file is gitignored since it contains repo-specific names):
 
 ```json
 {
   "backupDir": "gdrive:session-backups",
   "globalFiles": [
     "SESSION_LOG.md",
-    "CLAUDE.local.md"
+    "CLAUDE.local.md",
+    ".envrc"
   ],
   "repoOverrides": {
-    "davidshaevel-k8s-platform": {
-      "additionalFiles": [".envrc", ".env"]
+    "my-project": {
+      "additionalFiles": [".env"]
     }
   }
 }

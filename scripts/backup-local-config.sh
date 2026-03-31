@@ -37,7 +37,7 @@ CONFIG_FILE="$SCRIPT_DIR/../config/backup-config.json"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo "Error: config file not found at $CONFIG_FILE" >&2
-  echo "Create config/backup-config.json in the plugin directory." >&2
+  echo "Copy config/backup-config.json.example to config/backup-config.json and edit it." >&2
   exit 1
 fi
 
