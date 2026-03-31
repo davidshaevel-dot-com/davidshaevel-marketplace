@@ -50,6 +50,11 @@ This skill is used automatically:
 1. **Overwrite** the "Current State" section with current information
 2. **Prepend** a new entry to the "Session History" section
 3. **Trim** Session History to the last 30 sessions (remove oldest entries beyond 30)
+4. **Back up local config** — Run the backup script to sync gitignored files to Google Drive:
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/scripts/backup-local-config.sh" /path/to/repo
+   ```
+   Replace `/path/to/repo` with the project root. If the backup fails, log the error but do not block the session handoff.
 
 #### Bare + worktree repos
 
@@ -57,6 +62,11 @@ This skill is used automatically:
 2. Map that branch to its worktree directory (via `git worktree list`)
 3. Write SESSION_LOG.md **only** to that worktree's directory
 4. **Never** update another worktree's SESSION_LOG.md
+5. **Back up local config** — Run the backup script to sync gitignored files to Google Drive:
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/scripts/backup-local-config.sh" /path/to/repo-root
+   ```
+   Replace `/path/to/repo-root` with the bare repo root (the directory containing `.bare/`). This backs up files from all worktrees in a single call. If the backup fails, log the error but do not block the session handoff.
 
 ### Worktree Cleanup (Merging Session History)
 

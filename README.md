@@ -24,6 +24,7 @@ Personal Claude Code plugin providing development conventions, skills, and proje
 |-------|-------------|
 | `resolve-code-review` | Read PR feedback, fix or decline each item, reply in threads, post summary |
 | `session-handoff` | Read/write SESSION_LOG.md for cross-agent memory persistence |
+| `backup-local-config` | Back up gitignored local files to Google Drive via rclone |
 | `bootstrap-project` | Initialize new projects with CLAUDE.md, .cursorrules, CLAUDE.local.md, SESSION_LOG.md |
 
 ## Commands
@@ -74,6 +75,121 @@ Update `~/.claude/plugins/installed_plugins.json` to point to the new version:
 ### 4. Restart Claude Code
 
 Permission changes and plugin updates require a session restart to take effect.
+
+## Backup Local Config
+
+Back up gitignored files (SESSION_LOG.md, CLAUDE.local.md, .envrc, .env, etc.) to Google Drive. Runs automatically at session end via session-handoff, or on-demand.
+
+### Prerequisites
+
+1. **Install rclone:**
+   ```bash
+   brew install rclone
+   ```
+
+2. **Install jq:**
+   ```bash
+   brew install jq
+   ```
+
+3. **Configure a Google Drive remote in rclone:**
+   ```bash
+   rclone config
+   ```
+   When prompted:
+   - Choose `n` for new remote
+   - Name it `gdrive` (or whatever name you use in `backupDir`)
+   - Choose `Google Drive` as the storage type
+   - Follow the OAuth flow to authorize access
+   - Confirm the configuration
+
+   Verify with: `rclone listremotes` (should show `gdrive:`)
+
+### Configuration
+
+Copy the example config and edit it:
+
+```bash
+cp config/backup-config.json.example config/backup-config.json
+```
+
+Then edit `config/backup-config.json` (this file is gitignored since it contains repo-specific names):
+
+```json
+{
+  "backupDir": "gdrive:session-backups",
+  "globalFiles": [
+    "SESSION_LOG.md",
+    "CLAUDE.local.md"
+  ],
+  "repoOverrides": {
+    "my-project": {
+      "additionalFiles": [
+        ".envrc",
+        ".env"
+      ]
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `backupDir` | rclone remote and path (e.g., `gdrive:session-backups`) |
+| `globalFiles` | Files to back up in every repo |
+| `repoOverrides.<repo>.additionalFiles` | Extra files for a specific repo (merged with `globalFiles`) |
+
+**To add a new file to back up everywhere:** Add it to `globalFiles`.
+
+**To add a file for one repo only:** Add it to that repo's `additionalFiles` in `repoOverrides`. The repo key is the directory name (e.g., `my-infra-platform`).
+
+### Usage
+
+**On-demand (from Claude Code):**
+```
+/davidshaevel-claude-toolkit:backup-local-config
+```
+
+**Automatic:** Runs at every session end via session-handoff.
+
+**Dry run (preview without uploading):**
+```bash
+~/.claude/plugins/marketplaces/davidshaevel-marketplace/scripts/backup-local-config.sh --dry-run /path/to/repo
+```
+
+**Manual CLI (outside Claude Code):**
+```bash
+~/.claude/plugins/marketplaces/davidshaevel-marketplace/scripts/backup-local-config.sh /path/to/repo
+```
+
+### Google Drive Folder Structure
+
+Files are organized by repo and worktree:
+
+```
+session-backups/
+├── my-web-app/
+│   ├── main/
+│   │   ├── SESSION_LOG.md
+│   │   └── CLAUDE.local.md
+│   ├── feature-auth/
+│   │   └── ...
+│   └── feature-payments/
+│       └── ...
+├── my-infra-platform/
+│   ├── main/
+│   │   ├── SESSION_LOG.md
+│   │   ├── CLAUDE.local.md
+│   │   ├── .envrc
+│   │   └── .env
+│   └── ...
+└── my-cli-tool/
+    ├── SESSION_LOG.md
+    └── CLAUDE.local.md
+```
+
+- **Bare+worktree repos:** `<repo-name>/<worktree-name>/<file>`
+- **Standard repos:** `<repo-name>/<file>`
 
 ## Convention Change Propagation
 
