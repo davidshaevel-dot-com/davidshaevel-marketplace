@@ -87,8 +87,11 @@ else
 fi
 
 # --- Build file list ---
-# Start with global files
-mapfile -t FILE_LIST < <(jq -r '.globalFiles[]?' "$CONFIG_FILE")
+# Start with global files (use while-read for Bash 3.2 compatibility)
+FILE_LIST=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && FILE_LIST+=("$line")
+done < <(jq -r '.globalFiles[]?' "$CONFIG_FILE")
 
 # Merge repo-specific additional files if configured
 ADDITIONAL=$(jq -r --arg repo "$REPO_NAME" '.repoOverrides?[$repo]?.additionalFiles? // [] | .[]' "$CONFIG_FILE")
@@ -98,8 +101,12 @@ if [[ -n "$ADDITIONAL" ]]; then
   done <<< "$ADDITIONAL"
 fi
 
-# Deduplicate
-mapfile -t FILE_LIST < <(printf '%s\n' "${FILE_LIST[@]}" | sort -u)
+# Deduplicate (use while-read for Bash 3.2 compatibility)
+UNIQUE_FILES=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && UNIQUE_FILES+=("$line")
+done < <(printf '%s\n' "${FILE_LIST[@]}" | sort -u)
+FILE_LIST=("${UNIQUE_FILES[@]}")
 
 # --- Backup function ---
 backup_file() {
