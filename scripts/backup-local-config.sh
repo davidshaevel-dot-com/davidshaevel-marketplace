@@ -126,10 +126,12 @@ backup_file() {
     return 0
   fi
 
-  if rclone copy "$src" "$dest/" 2>&1; then
+  local output
+  if output=$(rclone copy "$src" "$dest/" 2>&1); then
     echo "  [ok] $src -> $dest"
   else
     echo "  [FAILED] $src -> $dest" >&2
+    [[ -n "$output" ]] && echo "    $output" >&2
     return 1
   fi
 }
