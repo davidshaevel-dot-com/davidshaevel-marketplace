@@ -106,7 +106,7 @@ davidshaevel-marketplace/
 | `config/backup-config.json` | Backup destination and file list configuration |
 | `scripts/backup-local-config.sh` | Shell script that backs up gitignored files via rclone |
 | `scripts/cloud_setup_script.sh` | One-time cloud-environment snapshot setup (gstack, bun, rclone) |
-| `docs/2026-04-23_cloud_environment_test_observations.md` | Six-item fix list for cloud-session bootstrap; tracked as TT-338 through TT-344 |
+| `docs/2026-04-23_cloud_environment_test_observations.md` | Six-item fix list for cloud-session bootstrap; tracked as TT-338 through TT-344 (item 5 split into TT-342 + TT-343, hence 7 issues from 6 items) |
 | `docs/cloud_backup_setup.md` | rclone Shared-Drive backup setup walkthrough |
 | `docs/cloud_session_setup.md` | Cloud session bootstrap walkthrough |
 | `hooks/session-start.sh` | Hook that injects conventions into Claude context |
