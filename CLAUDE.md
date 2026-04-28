@@ -58,7 +58,14 @@ davidshaevel-marketplace/
 │   │   └── backup-config.json.example # Backup config template (committed)
 │   │
 │   ├── scripts/                       # Plugin scripts
-│   │   └── backup-local-config.sh     # Backs up gitignored files to Google Drive
+│   │   ├── backup-local-config.sh     # Backs up gitignored files to Google Drive
+│   │   └── cloud_setup_script.sh      # One-time cloud-environment snapshot setup
+│   │
+│   ├── docs/                          # Internal documentation
+│   │   ├── 2026-04-23_cloud_environment_test_observations.md  # Cloud-env fix list (TT-338..344)
+│   │   ├── cloud_backup_setup.md      # rclone Shared-Drive backup setup
+│   │   ├── cloud_session_setup.md     # Cloud session bootstrap walkthrough
+│   │   └── superpowers/               # Notes on the superpowers plugin (separate)
 │   │
 │   ├── hooks/                         # Plugin hooks
 │   │   ├── hooks.json                 # Hook definitions
@@ -98,6 +105,10 @@ davidshaevel-marketplace/
 | `conventions/development-standards.md` | Development conventions injected at session start |
 | `config/backup-config.json` | Backup destination and file list configuration |
 | `scripts/backup-local-config.sh` | Shell script that backs up gitignored files via rclone |
+| `scripts/cloud_setup_script.sh` | One-time cloud-environment snapshot setup (gstack, bun, rclone) |
+| `docs/2026-04-23_cloud_environment_test_observations.md` | Six-item fix list for cloud-session bootstrap; tracked as TT-338 through TT-344 |
+| `docs/cloud_backup_setup.md` | rclone Shared-Drive backup setup walkthrough |
+| `docs/cloud_session_setup.md` | Cloud session bootstrap walkthrough |
 | `hooks/session-start.sh` | Hook that injects conventions into Claude context |
 | `skills/*/SKILL.md` | Skill definitions (bootstrap, code review, session handoff) |
 | `skills/backup-local-config/SKILL.md` | On-demand backup skill definition |
