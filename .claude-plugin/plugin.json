@@ -1,7 +1,7 @@
 {
   "name": "davidshaevel-claude-toolkit",
-  "description": "Personal development conventions, skills, and project templates for Claude Code",
-  "version": "1.3.1",
+  "description": "Personal development conventions, skills, and project templates for Claude Code and Codex CLI",
+  "version": "1.4.0",
   "author": {
     "name": "David Shaevel",
     "email": "david@davidshaevel.com"
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace",
   "repository": "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace",
   "license": "MIT",
-  "keywords": ["conventions", "skills", "templates", "worktrees", "linear"]
+  "keywords": ["conventions", "skills", "templates", "worktrees", "linear", "codex", "multi-agent"]
 }

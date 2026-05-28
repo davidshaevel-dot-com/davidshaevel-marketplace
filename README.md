@@ -1,6 +1,6 @@
 # davidshaevel-marketplace
 
-Personal Claude Code plugin providing development conventions, skills, and project templates.
+Personal multi-agent development plugin providing development conventions, skills, and project templates. Works with **Claude Code** and **OpenAI Codex CLI**.
 
 ## What This Plugin Provides
 
@@ -8,7 +8,13 @@ Personal Claude Code plugin providing development conventions, skills, and proje
 - **Skills** for code review resolution, session handoff (cross-agent memory), and project bootstrapping
 - **Templates** for initializing new projects with standard structure
 
+The same conventions, hooks, and skills serve both agents. Claude Code loads them via `.claude-plugin/plugin.json`; Codex loads them via `.codex-plugin/plugin.json` (v1.4.0+).
+
+> **Plugin name:** the plugin identifier is `davidshaevel-claude-toolkit`. It is retained (despite "claude" in the name) for install-command and marketplace-registration stability across both agents. A vendor-neutral rename is a future v2.0.0 consideration.
+
 ## Installation
+
+### Claude Code
 
 ```bash
 # Add as a marketplace
@@ -17,6 +23,18 @@ Personal Claude Code plugin providing development conventions, skills, and proje
 # Install the plugin
 /plugin install davidshaevel-marketplace@davidshaevel-claude-toolkit
 ```
+
+### Codex CLI
+
+Register the marketplace as a git source in `~/.codex/config.toml`:
+
+```toml
+[marketplaces.davidshaevel-marketplace]
+source_type = "git"
+source = "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace.git"
+```
+
+Then enable the plugin (`[plugins."davidshaevel-claude-toolkit@davidshaevel-marketplace"] enabled = true`) and restart Codex. The SessionStart hook injects conventions and the four skills become discoverable. Codex also reads `CLAUDE.md`, `CLAUDE.local.md`, and `SESSION_LOG.md` via `project_doc_fallback_filenames`.
 
 ## Skills
 
@@ -194,6 +212,7 @@ session-backups/
 ## Convention Change Propagation
 
 - **Claude Code:** Follow the update steps above, then restart the session
+- **Codex:** Pull the marketplace git source (`~/.codex/plugins/cache/...`) or re-sync the marketplace, then restart Codex
 - **Cursor:** Re-run `/bootstrap-project` to regenerate `.cursorrules`
 
 ## License
