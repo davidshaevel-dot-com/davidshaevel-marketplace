@@ -43,7 +43,7 @@ Co-authored-by: <agent attribution — see below>
 related-issues: TT-XXX
 ```
 
-**Co-authored-by by agent** (use the current model/version of whichever agent authored the commit). The trailer key is lowercase `Co-authored-by:` per the standard Git trailer convention; the value must follow `Name <email>` format so GitHub can attribute the co-authorship:
+**Co-authored-by format by agent** (use the current model/version of whichever agent authored the commit). The trailer key is lowercase `Co-authored-by:` per the standard Git trailer convention; the value must follow `Name <email>` format so GitHub can attribute the co-authorship:
 
 | Agent | Trailer format |
 | -- | -- |
