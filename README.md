@@ -26,19 +26,16 @@ The same conventions, hooks, and skills serve both agents. Claude Code loads the
 
 ### Codex CLI
 
-Register the marketplace as a git source in `~/.codex/config.toml`:
+**v1.4.0 status: foundational support only.** This release ships the Codex-side infrastructure — `.codex-plugin/plugin.json` manifest, `hooks/hooks-codex.json` (uses Codex-canonical `$PLUGIN_ROOT`), shared `conventions/development-standards.md`, and shared `skills/`. **Remote git-source marketplace install is not yet working** because two architectural changes are required:
 
-```toml
-[marketplaces.davidshaevel-marketplace]
-source_type = "git"
-source = "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace.git"
-```
+1. **Plugin layout.** Codex's local source resolver rejects entries that resolve to the marketplace root; the plugin needs to live in a `./plugins/<plugin-name>/` subdirectory per the Codex `plugin-json-spec`. Our current repo uses a root layout (which Claude Code supports natively).
+2. **Skill path resolution.** Several skills (`backup-local-config`, `session-handoff` backup step) invoke scripts via `${CLAUDE_PLUGIN_ROOT}/scripts/...`. In a Codex session that variable is not populated; the commands fail. Need to make skill path resolution agent-agnostic (or detect `$PLUGIN_ROOT` first).
 
-Then enable the plugin (`[plugins."davidshaevel-claude-toolkit@davidshaevel-marketplace"] enabled = true`) and restart Codex.
+Both blockers are tracked in **[TT-393 — v1.5.0 Codex remote git-source marketplace install support](https://linear.app/davidshaevel-dot-com/issue/TT-393)**.
 
-**Trust the SessionStart hook (required on first install).** Codex treats plugin-bundled hooks as non-managed and skips them until the user reviews and trusts the hook definition. On the first Codex session after installing the plugin, Codex will surface a hook-trust prompt for the SessionStart hook in `hooks/hooks-codex.json` (the Codex-specific hook config; Claude Code uses `hooks/hooks.json`). Accept the trust prompt — Codex will record the approval in `~/.codex/config.toml` as a `[hooks.state."davidshaevel-claude-toolkit@davidshaevel-marketplace:hooks/hooks-codex.json:session_start:0:0"]` entry with `enabled = true` and a `trusted_hash`. Until this step is completed, the SessionStart hook does NOT fire and conventions are NOT injected, even though skills are discoverable.
+**For now (v1.4.0):** if you want to experiment with the plugin in Codex, clone the repo locally and register a personal-marketplace entry pointing at the local path (Codex's `~/.agents/plugins/marketplace.json`). When the SessionStart hook fires for the first time, Codex will surface a trust prompt — accept it to enable `conventions/development-standards.md` injection. Skills that don't depend on `${CLAUDE_PLUGIN_ROOT}` (`resolve-code-review`, `bootstrap-project`) work; skills that do (`backup-local-config`, `session-handoff` backup step) won't until v1.5.0.
 
-After trust is granted: the SessionStart hook injects `conventions/development-standards.md` and the four skills become discoverable. Codex also reads `CLAUDE.md`, `CLAUDE.local.md`, and `SESSION_LOG.md` via `project_doc_fallback_filenames`. Note: if the hook definition changes in a future plugin release, Codex will re-prompt for trust before running the new version.
+**For full multi-agent install parity:** track [TT-393](https://linear.app/davidshaevel-dot-com/issue/TT-393). v1.5.0 will restore the remote git-source install path (`[marketplaces.davidshaevel-marketplace] source_type = "git"` in `~/.codex/config.toml`) once the architectural work lands.
 
 ## Skills
 
