@@ -1,6 +1,6 @@
 # davidshaevel-marketplace
 
-Personal Claude Code plugin providing development conventions, skills, and project templates.
+Personal multi-agent development plugin providing development conventions, skills, and project templates. Works with **Claude Code** and **OpenAI Codex CLI**.
 
 ## What This Plugin Provides
 
@@ -8,7 +8,13 @@ Personal Claude Code plugin providing development conventions, skills, and proje
 - **Skills** for code review resolution, session handoff (cross-agent memory), and project bootstrapping
 - **Templates** for initializing new projects with standard structure
 
+The same conventions, hooks, and skills serve both agents. Claude Code loads them via `.claude-plugin/plugin.json`; Codex loads them via `.codex-plugin/plugin.json` (v1.4.0+).
+
+> **Plugin name:** the plugin identifier is `davidshaevel-claude-toolkit`. It is retained (despite "claude" in the name) for install-command and marketplace-registration stability across both agents. A vendor-neutral rename is a future v2.0.0 consideration.
+
 ## Installation
+
+### Claude Code
 
 ```bash
 # Add as a marketplace
@@ -17,6 +23,19 @@ Personal Claude Code plugin providing development conventions, skills, and proje
 # Install the plugin
 /plugin install davidshaevel-marketplace@davidshaevel-claude-toolkit
 ```
+
+### Codex CLI
+
+**v1.4.0 status: foundational support only.** This release ships the Codex-side infrastructure — `.codex-plugin/plugin.json` manifest, `hooks/hooks-codex.json` (uses Codex-canonical `$PLUGIN_ROOT`), shared `conventions/development-standards.md`, and shared `skills/`. **Remote git-source marketplace install is not yet working** because two architectural changes are required:
+
+1. **Plugin layout.** Codex's local source resolver rejects entries that resolve to the marketplace root; the plugin needs to live in a `./plugins/<plugin-name>/` subdirectory per the Codex `plugin-json-spec`. Our current repo uses a root layout (which Claude Code supports natively).
+2. **Skill path resolution.** Several skills (`backup-local-config`, `session-handoff` backup step) invoke scripts via `${CLAUDE_PLUGIN_ROOT}/scripts/...`. In a Codex session that variable is not populated; the commands fail. Need to make skill path resolution agent-agnostic (or detect `$PLUGIN_ROOT` first).
+
+Both blockers are tracked in **[TT-393 — v1.5.0 Codex remote git-source marketplace install support](https://linear.app/davidshaevel-dot-com/issue/TT-393)**.
+
+**For now (v1.4.0):** if you want to experiment with the plugin in Codex, clone the repo locally and register a personal-marketplace entry pointing at the local path (Codex's `~/.agents/plugins/marketplace.json`). When the SessionStart hook fires for the first time, Codex will surface a trust prompt — accept it to enable `conventions/development-standards.md` injection. Skills that don't depend on `${CLAUDE_PLUGIN_ROOT}` (`resolve-code-review`, `bootstrap-project`) work; skills that do (`backup-local-config`, `session-handoff` backup step) won't until v1.5.0.
+
+**For full multi-agent install parity:** track [TT-393](https://linear.app/davidshaevel-dot-com/issue/TT-393). v1.5.0 will restore the remote git-source install path (`[marketplaces.davidshaevel-marketplace] source_type = "git"` in `~/.codex/config.toml`) once the architectural work lands.
 
 ## Skills
 
@@ -194,6 +213,7 @@ session-backups/
 ## Convention Change Propagation
 
 - **Claude Code:** Follow the update steps above, then restart the session
+- **Codex:** Pull the marketplace git source (`~/.codex/plugins/cache/...`) or re-sync the marketplace, then restart Codex
 - **Cursor:** Re-run `/bootstrap-project` to regenerate `.cursorrules`
 
 ## License

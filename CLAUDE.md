@@ -4,11 +4,13 @@
 
 ## Project Overview
 
-Personal Claude Code plugin providing development conventions, skills, and project templates. It standardizes development workflows across all of David Shaevel's projects by injecting conventions at session start, providing reusable skills, and offering project bootstrapping templates.
+Personal multi-agent development plugin providing development conventions, skills, and project templates. It standardizes development workflows across all of David Shaevel's projects by injecting conventions at session start, providing reusable skills, and offering project bootstrapping templates.
+
+**As of v1.4.0, the plugin supports both Claude Code and OpenAI Codex CLI.** The same `hooks/hooks.json`, `conventions/development-standards.md`, and `skills/` serve both agents — Claude Code loads them via `.claude-plugin/plugin.json`, Codex via `.codex-plugin/plugin.json`. The plugin `name` remains `davidshaevel-claude-toolkit` for install-command and marketplace-registration stability; a vendor-neutral rename is a future v2.0.0 consideration.
 
 **Key Technologies:**
 - **Languages:** Shell (Bash/Zsh), Markdown
-- **Platform:** Claude Code Plugin System
+- **Platforms:** Claude Code Plugin System + Codex CLI plugin system
 - **Tooling:** jq, gh CLI, direnv
 
 **Project Management:**
@@ -21,15 +23,16 @@ Personal Claude Code plugin providing development conventions, skills, and proje
 ## Architecture
 
 ```
-Plugin Load Flow:
-  Claude Code starts
-    → Loads .claude-plugin/plugin.json
+Plugin Load Flow (both agents share hooks/, conventions/, skills/):
+  Claude Code starts            Codex starts
+    → .claude-plugin/plugin.json   → .codex-plugin/plugin.json
     → Registers skills, commands, hooks
-    → session-start hook fires
-      → hooks/session-start.sh executes
+    → session-start hook fires (hooks/hooks.json → hooks/session-start.sh)
       → Injects conventions/development-standards.md into context
     → Skills and commands available for the session
 ```
+
+Both manifests point at the same `skills/` directory and the same `hooks/hooks.json`. The hook output contract (JSON with `hookSpecificOutput.additionalContext`) is identical across agents, so `session-start.sh` is unchanged.
 
 ---
 
@@ -42,9 +45,12 @@ davidshaevel-marketplace/
 ├── .git                               # Points to .bare
 │
 ├── main/                              # Main branch worktree
-│   ├── .claude-plugin/                # Plugin manifest
+│   ├── .claude-plugin/                # Claude Code plugin manifest
 │   │   ├── plugin.json                # Plugin definition (skills, hooks, commands)
 │   │   └── marketplace.json           # Marketplace metadata
+│   │
+│   ├── .codex-plugin/                 # Codex CLI plugin manifest (v1.4.0+)
+│   │   └── plugin.json                # Codex plugin definition (skills key + interface)
 │   │
 │   ├── commands/                      # Slash commands
 │   │   ├── bootstrap-project.md       # /bootstrap-project command

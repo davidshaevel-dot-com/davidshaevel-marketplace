@@ -1,0 +1,27 @@
+{
+  "name": "davidshaevel-claude-toolkit",
+  "description": "Personal development conventions, skills, and project templates for Claude Code and Codex CLI",
+  "version": "1.4.0",
+  "author": {
+    "name": "David Shaevel",
+    "email": "david@davidshaevel.com"
+  },
+  "homepage": "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace",
+  "repository": "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace",
+  "license": "MIT",
+  "keywords": ["conventions", "skills", "templates", "worktrees", "linear", "codex", "multi-agent"],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks-codex.json",
+  "interface": {
+    "displayName": "davidshaevel toolkit",
+    "shortDescription": "Personal dev conventions, skills, and templates for Claude Code and Codex",
+    "longDescription": "Loads David Shaevel's development conventions at session start and provides skills for session handoff (cross-agent SESSION_LOG.md memory), local-config backup to Google Drive, PR code-review resolution, and project bootstrap. Works across Claude Code and Codex CLI.",
+    "developerName": "David Shaevel",
+    "category": "Coding",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/davidshaevel-dot-com/davidshaevel-marketplace"
+  }
+}

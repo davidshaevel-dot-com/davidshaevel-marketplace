@@ -24,9 +24,12 @@ If there's even a 1% chance a skill applies, invoke it.
 ### Branch Naming Convention
 
 ```
-claude/<issue-id>-<brief-description>
-david/<issue-id>-<brief-description>
+claude/<issue-id>-<brief-description>    # branches created in Claude Code
+codex/<issue-id>-<brief-description>     # branches created in Codex
+david/<issue-id>-<brief-description>     # branches created by hand
 ```
+
+Use the prefix matching the agent that created the branch. All three are valid; the prefix records provenance.
 
 ### Commit Message Format (Conventional Commits)
 
@@ -35,10 +38,19 @@ david/<issue-id>-<brief-description>
 
 Longer description if needed.
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-authored-by: <agent attribution — see below>
 
 related-issues: TT-XXX
 ```
+
+**Co-authored-by format by agent** (use the current model/version of whichever agent authored the commit). The trailer key is lowercase `Co-authored-by:` per the standard Git trailer convention; the value must follow `Name <email>` format so GitHub can attribute the co-authorship:
+
+| Agent | Trailer format |
+| -- | -- |
+| Claude Code | `Co-authored-by: Claude <model> <noreply@anthropic.com>` (e.g., `Co-authored-by: Claude Opus 4.7 <noreply@anthropic.com>`) |
+| Codex | `Co-authored-by: OpenAI Codex (<model> <effort>) <noreply@openai.com>` (e.g., `Co-authored-by: OpenAI Codex (gpt-5.5 medium) <noreply@openai.com>`) |
+
+Do not pin a stale model version — use the model actually running the session.
 
 **Types:** `feat`, `fix`, `docs`, `chore`, `refactor`, `test`
 
