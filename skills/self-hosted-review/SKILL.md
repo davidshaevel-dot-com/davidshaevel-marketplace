@@ -35,14 +35,17 @@ instructs replies to `@gemini-code-assist`. Handing a Codex or Qodo review to it
 its filter matches nothing and any reply @-mentions a bot that no longer exists. Until
 TT-367 lands multi-bot support, handle those reviews in this skill:
 
-1. Read every bot's comments — filter by the actual reviewer, not a hardcoded login:
+1. Read every bot's comments — filter by the actual reviewer, not a hardcoded login.
+   **Paginate:** the endpoint's default `per_page` is 30, so a PR with several review
+   rounds will silently drop later comments.
    ```bash
-   gh api "repos/$REPO/pulls/$PR/comments" \
-     --jq '.[] | select(.user.type == "Bot") | {id, user: .user.login, path, line, body}'
+   gh api "repos/<owner>/<repo>/pulls/<PR>/comments?per_page=100" --paginate \
+     --jq '.[] | select(.user.type == "Bot") | select(.in_reply_to_id == null) | {id, user: .user.login, path, line, body}'
    ```
-2. Fix or decline each, then reply **in-thread @-mentioning the bot that wrote it**:
+2. Fix or decline each, then reply **in-thread @-mentioning the bot that wrote it**.
+   Note the reply endpoint includes the PR number — omitting it 404s:
    ```bash
-   gh api "repos/$REPO/pulls/$PR/comments/$COMMENT_ID/replies" \
+   gh api "repos/<owner>/<repo>/pulls/<PR>/comments/<COMMENT_ID>/replies" \
      -f body="@<that-bot> Fixed. <what changed and why>"
    ```
 3. Post a summary comment tagging every bot that reviewed.
@@ -71,20 +74,33 @@ with no review record at all should not merge.
 
 Take the base and head from the **PR itself**, not from a hardcoded branch. A PR may not
 target `main`, and a local `origin/main` ref can be stale or absent — in a bare+worktree
-checkout `git rev-parse origin/main` can fail outright.
+checkout `git rev-parse origin/main` fails outright with *"ambiguous argument"*.
+
+> **Run each `gh` command standalone.** Do not wrap them in `$(...)`, `eval`, or chain
+> with `&&`. Claude Code evaluates each part of a chain independently for permission
+> matching, so `REPO=$(gh repo view ...)` will not match a `Bash(gh repo view *)`
+> permission even though the bare command would. Run the command alone and read the
+> values from the tool result.
 
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-eval "$(gh pr view "$PR" --json baseRefOid,headRefOid,baseRefName \
-  -q '"BASE_SHA=\(.baseRefOid)\nHEAD_SHA=\(.headRefOid)\nBASE_REF=\(.baseRefName)"')"
+gh repo view --json nameWithOwner -q .nameWithOwner
 ```
 
-Reviewing pre-push with no PR yet? Then use the merge base against the branch you will
-target, not `HEAD~1`:
+```bash
+gh pr view <PR> --json baseRefOid,headRefOid,baseRefName
+```
+
+Read `baseRefOid` as the base SHA and `headRefOid` as the head SHA from that output.
+
+Reviewing pre-push with no PR yet? Use the merge base against the branch you will target,
+not `HEAD~1` — and take the two `git` commands separately for the same reason:
 
 ```bash
-BASE_SHA=$(git merge-base HEAD origin/"$BASE_REF")
-HEAD_SHA=$(git rev-parse HEAD)
+git merge-base HEAD origin/<base-branch>
+```
+
+```bash
+git rev-parse HEAD
 ```
 
 Create a todo per cycle you intend to run.
