@@ -1,7 +1,7 @@
 {
   "name": "davidshaevel-claude-toolkit",
   "description": "Personal development conventions, skills, and project templates for Claude Code and Codex CLI",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": {
     "name": "David Shaevel",
     "email": "david@davidshaevel.com"
@@ -15,7 +15,7 @@
   "interface": {
     "displayName": "davidshaevel toolkit",
     "shortDescription": "Personal dev conventions, skills, and templates for Claude Code and Codex",
-    "longDescription": "Loads David Shaevel's development conventions at session start and provides skills for session handoff (cross-agent SESSION_LOG.md memory), local-config backup to Google Drive, PR code-review resolution, and project bootstrap. Works across Claude Code and Codex CLI.",
+    "longDescription": "Loads David Shaevel's development conventions at session start and provides skills for session handoff (cross-agent SESSION_LOG.md memory), local-config backup to Google Drive, PR code-review resolution, self-hosted multi-cycle PR review for when no bot reviewer responds, and project bootstrap. Works across Claude Code and Codex CLI.",
     "developerName": "David Shaevel",
     "category": "Coding",
     "capabilities": [
