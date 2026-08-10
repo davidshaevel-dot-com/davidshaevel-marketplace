@@ -72,13 +72,33 @@ Do not pin a stale model version — use the model actually running the session.
    ```bash
    gh pr create --head <branch-name> --title "..." --body "..."
    ```
-3. **Wait for review** (Gemini Code Assist or human reviewer)
+3. **Wait for review** (bot reviewer or human reviewer). **If no reviewer responds, see
+   "When no bot reviewer is available" below — do not merge unreviewed.**
 4. **Address feedback:**
    - CRITICAL and HIGH issues: Must fix
    - MEDIUM issues: Evaluate and decide
    - LOW issues: Fix if trivial, decline if YAGNI
 5. **Post summary comment** with all fixes addressed
 6. **Merge only after** all review feedback resolved
+
+### When no bot reviewer is available
+
+Gemini Code Assist sunset **2026-07-17** and Qodo Merge is not yet installed on
+`davidshaevel-dot-com`, so PRs there frequently open with **zero** automated reviewers.
+"No bot responded" is not review, and it is not a reason to merge unreviewed.
+
+Run the **self-hosted agent review** protocol instead — three subagent-driven cycles
+(architectural, line-level, verification), each given an explicit exclusion list so they
+complement rather than duplicate each other:
+
+> `docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md` (TT-472)
+
+Post each cycle's findings to the PR as a comment. Without bots, that is the only record
+that review happened.
+
+This is interim. TT-367 remains the destination once bot reviewers are restored; this
+protocol is the branch taken when reviewer detection finds none, and stays useful for
+pre-push review and repos with no bot install.
 
 **Merge Strategy:** Always use **Squash and Merge** for pull requests.
 
