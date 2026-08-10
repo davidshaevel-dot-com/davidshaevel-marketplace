@@ -5,7 +5,7 @@ Personal multi-agent development plugin providing development conventions, skill
 ## What This Plugin Provides
 
 - **Development conventions** injected automatically at session start via hook
-- **Skills** for code review resolution, session handoff (cross-agent memory), and project bootstrapping
+- **Skills** for code review — both resolving bot feedback and producing a review when no bot responds — plus session handoff (cross-agent memory), local-config backup, and project bootstrapping
 - **Templates** for initializing new projects with standard structure
 
 The same conventions, hooks, and skills serve both agents. Claude Code loads them via `.claude-plugin/plugin.json`; Codex loads them via `.codex-plugin/plugin.json` (v1.4.0+).
@@ -41,16 +41,32 @@ Both blockers are tracked in **[TT-393 — v1.5.0 Codex remote git-source market
 
 | Skill | Description |
 |-------|-------------|
-| `resolve-code-review` | Read PR feedback, fix or decline each item, reply in threads, post summary |
+| `resolve-code-review` | Read PR feedback from `gemini-code-assist`, fix or decline each item, reply in threads, post summary |
+| `self-hosted-review` | Produce a review with subagents when **no bot reviewer responded** — three cycles (architectural, line-level, verification) |
 | `session-handoff` | Read/write SESSION_LOG.md for cross-agent memory persistence |
 | `backup-local-config` | Back up gitignored local files to Google Drive via rclone |
 | `bootstrap-project` | Initialize new projects with CLAUDE.md, .cursorrules, CLAUDE.local.md, SESSION_LOG.md |
+
+### Which review skill?
+
+| PR state | Skill |
+|---|---|
+| `gemini-code-assist[bot]` reviewed | `resolve-code-review` — it filters for that bot specifically |
+| Another bot reviewed (Codex, Qodo, …) | `self-hosted-review` — `resolve-code-review` would match nothing |
+| **No bot reviewed** | `self-hosted-review` |
+
+Gemini Code Assist sunset **2026-07-17**, so on `davidshaevel-dot-com` the last two rows
+are the common case. `self-hosted-review` also auto-invokes when a PR has zero bot
+reviews. Merging on "no bot responded" is not review.
+
+Consolidating both into one multi-bot resolver is tracked as TT-367.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `/resolve-code-review` | Invoke the resolve-code-review skill |
+| `/self-hosted-review` | Invoke the self-hosted-review skill (optionally `/self-hosted-review <PR>`) |
 | `/bootstrap-project` | Invoke the bootstrap-project skill |
 
 ## Updating the Plugin

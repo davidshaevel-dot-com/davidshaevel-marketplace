@@ -54,7 +54,8 @@ davidshaevel-marketplace/
 │   │
 │   ├── commands/                      # Slash commands
 │   │   ├── bootstrap-project.md       # /bootstrap-project command
-│   │   └── resolve-code-review.md     # /resolve-code-review command
+│   │   ├── resolve-code-review.md     # /resolve-code-review command
+│   │   └── self-hosted-review.md      # /self-hosted-review command
 │   │
 │   ├── conventions/                   # Auto-injected conventions
 │   │   └── development-standards.md   # Git, PR, worktree, Linear conventions
@@ -80,7 +81,8 @@ davidshaevel-marketplace/
 │   │
 │   ├── skills/                        # Plugin skills
 │   │   ├── bootstrap-project/SKILL.md # Project initialization skill
-│   │   ├── resolve-code-review/SKILL.md # Code review resolution skill
+│   │   ├── resolve-code-review/SKILL.md # Bot-review resolution (Gemini-specific)
+│   │   ├── self-hosted-review/SKILL.md # Subagent review when no bot responds
 │   │   ├── session-handoff/SKILL.md   # Session handoff skill
 │   │   └── backup-local-config/SKILL.md # Local file backup skill
 │   │
@@ -116,7 +118,9 @@ davidshaevel-marketplace/
 | `docs/cloud_backup_setup.md` | rclone Shared-Drive backup setup walkthrough |
 | `docs/cloud_session_setup.md` | Cloud session bootstrap walkthrough |
 | `hooks/session-start.sh` | Hook that injects conventions into Claude context |
-| `skills/*/SKILL.md` | Skill definitions (bootstrap, code review, session handoff) |
+| `skills/*/SKILL.md` | Skill definitions (bootstrap, code review, self-hosted review, session handoff) |
+| `skills/self-hosted-review/SKILL.md` | Multi-cycle subagent PR review for when no bot reviewer responds (TT-472) |
+| `docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md` | Rationale + worked example for the self-hosted review protocol |
 | `skills/backup-local-config/SKILL.md` | On-demand backup skill definition |
 | `templates/*` | Project bootstrap templates |
 
