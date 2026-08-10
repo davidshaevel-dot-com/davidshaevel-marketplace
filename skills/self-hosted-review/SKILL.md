@@ -186,7 +186,35 @@ regardless.
 
 ## Permissions
 
-Needs `Bash(gh pr view *)`, `Bash(gh pr comment *)`, `Bash(gh pr edit *)`,
-`Bash(gh pr merge *)`, `Bash(git rev-parse *)`, plus whatever the repo's tests and
-linters require. See `resolve-code-review/PERMISSIONS.md` once TT-367 establishes that
-pattern.
+Every command this skill instructs, and why. An incomplete list here blocks the skill
+mid-run — and because wrapped commands don't satisfy permission matching (see "Before
+starting"), there is no workaround by composing them.
+
+```jsonc
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo view *)",     // resolve owner/repo
+      "Bash(gh pr view *)",       // PR metadata, baseRefOid / headRefOid
+      "Bash(gh pr comment *)",    // post each cycle's findings
+      "Bash(gh pr edit *)",       // update title/body when scope grows
+      "Bash(gh pr merge *)",      // squash merge after acceptance
+      "Bash(gh api *)",           // read bot comments, post in-thread replies
+      "Bash(git rev-parse *)",    // HEAD for pre-push review
+      "Bash(git merge-base *)"    // base for pre-push review
+    ]
+  }
+}
+```
+
+Plus whatever the repo's own tests and linters require, since cycles reproduce findings
+by execution.
+
+**`Bash(gh api *)` is broad** — it covers mutations, not just reads. A tighter
+`Bash(gh api repos/*)` would express the intent better, but the calls here quote their
+path (`gh api "repos/..."`), and prefix matching against a quoted argument is not
+something to assume works. Verify on a real run before narrowing it; a pattern that looks
+tighter but silently fails to match is worse than an honest broad one.
+
+This list is provisional. When TT-367 establishes the `PERMISSIONS.md` pattern, move it
+there with rationale and merge instructions, alongside `resolve-code-review`'s.
