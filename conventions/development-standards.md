@@ -87,18 +87,43 @@ Gemini Code Assist sunset **2026-07-17** and Qodo Merge is not yet installed on
 `davidshaevel-dot-com`, so PRs there frequently open with **zero** automated reviewers.
 "No bot responded" is not review, and it is not a reason to merge unreviewed.
 
-Run the **self-hosted agent review** protocol instead — three subagent-driven cycles
-(architectural, line-level, verification), each given an explicit exclusion list so they
-complement rather than duplicate each other:
+Run the **self-hosted agent review** protocol instead:
 
-> `docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md` (TT-472)
+```
+/self-hosted-review          # current branch's PR
+/self-hosted-review <N>      # a specific PR
+```
 
-Post each cycle's findings to the PR as a comment. Without bots, that is the only record
-that review happened.
+The skill ships with this plugin, so it is available in every consuming repo. It also
+auto-invokes when a PR has zero bot reviews.
+
+**If the skill is unavailable** (older plugin version), the protocol is three subagent
+cycles, each told explicitly what *not* to look at so they complement rather than
+duplicate:
+
+1. **Architectural** — plan alignment, failure modes, deployment model, doc accuracy.
+   Steer it *away* from line-level nits and say a line-level pass follows.
+2. **Line-level** — `/code-review high <branch>`, passing a do-not-report list of every
+   cycle-1 finding already fixed. Review the whole file, not just the diff.
+3. **Verification** — required when cycle 2's fixes materially changed the code. Scope to
+   the final state, pass a do-not-relitigate list of settled decisions, and allow
+   "no new issues found" as an answer.
+
+Fix findings between cycles. Verify by content, not by line count. Post each cycle's
+findings to the PR as a comment — without bots, that is the only record review happened.
+
+Full rationale and worked example live in the plugin repo at
+`docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md` (TT-472).
 
 This is interim. TT-367 remains the destination once bot reviewers are restored; this
 protocol is the branch taken when reviewer detection finds none, and stays useful for
 pre-push review and repos with no bot install.
+
+> **Note on `resolve-code-review`:** it currently filters for `gemini-code-assist[bot]`
+> only. A Codex or Qodo review handed to it matches nothing and would reply to a bot that
+> no longer exists. Until TT-367 adds multi-bot support, handle non-Gemini bot reviews
+> via `/self-hosted-review`, which reads comments by `user.type == "Bot"` and replies to
+> whichever bot actually wrote them.
 
 **Merge Strategy:** Always use **Squash and Merge** for pull requests.
 

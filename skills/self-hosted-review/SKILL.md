@@ -18,32 +18,72 @@ Run `gh pr view <N> --json reviews,comments,additions,deletions` first.
 
 | Observed | Action |
 |---|---|
-| Bot reviews present | Use `resolve-code-review` instead — that's the bounded-loop protocol |
+| **`gemini-code-assist[bot]` reviewed** | Use `resolve-code-review` — it is built for that bot specifically |
+| **Another bot reviewed** (Codex, Qodo, …) | **Address its comments here.** See below — `resolve-code-review` cannot process them yet |
 | **Zero bot reviews** | **Run this** |
 | No PR yet, destructive change | Run cycles 1–2 pre-push |
 
-As of 2026-08-10 on `davidshaevel-dot-com`, zero is the normal case: Gemini Code Assist
+As of 2026-08-10 on `davidshaevel-dot-com`, zero is the common case: Gemini Code Assist
 sunset 2026-07-17, Qodo Merge is not installed, Codex is quota-limited.
 
 **"No bot responded" is not review.** Do not merge on it.
 
+### Why non-Gemini bots are handled here
+
+`resolve-code-review` hardcodes `gemini-code-assist[bot]` in its comment filters and
+instructs replies to `@gemini-code-assist`. Handing a Codex or Qodo review to it means
+its filter matches nothing and any reply @-mentions a bot that no longer exists. Until
+TT-367 lands multi-bot support, handle those reviews in this skill:
+
+1. Read every bot's comments — filter by the actual reviewer, not a hardcoded login:
+   ```bash
+   gh api "repos/$REPO/pulls/$PR/comments" \
+     --jq '.[] | select(.user.type == "Bot") | {id, user: .user.login, path, line, body}'
+   ```
+2. Fix or decline each, then reply **in-thread @-mentioning the bot that wrote it**:
+   ```bash
+   gh api "repos/$REPO/pulls/$PR/comments/$COMMENT_ID/replies" \
+     -f body="@<that-bot> Fixed. <what changed and why>"
+   ```
+3. Post a summary comment tagging every bot that reviewed.
+4. A single bot's review is **not** a substitute for the cycles below on destructive or
+   scheduled changes — it is one lens. Run the cycles it did not cover.
+
 ## Scale to the change
+
+Every PR gets at least one review pass. The convention is *never merge without code
+review*; this table decides how much, not whether.
 
 | Change | Cycles |
 |---|---|
-| Docs, comments, config text | Skip, or cycle 1 only |
+| Docs, comments, config text | Cycle 1 only |
 | Ordinary code edits | 1 and 2 |
 | Destructive, scheduled, unattended, security-relevant, or touching backups | All three |
+| Already has a substantive bot or human review | Judgement — run the cycles that review did not cover; none is acceptable if it genuinely covered the change |
 
 Cycle 2 alone can use 20+ agents. That is right for a script that deletes files on a
-schedule and wrong for a typo fix.
+schedule and wrong for a typo fix. **Scaling down is not the same as skipping** — a PR
+with no review record at all should not merge.
 
 ## Procedure
 
 ### Before starting
 
+Take the base and head from the **PR itself**, not from a hardcoded branch. A PR may not
+target `main`, and a local `origin/main` ref can be stale or absent — in a bare+worktree
+checkout `git rev-parse origin/main` can fail outright.
+
 ```bash
-BASE_SHA=$(git rev-parse origin/main)
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+eval "$(gh pr view "$PR" --json baseRefOid,headRefOid,baseRefName \
+  -q '"BASE_SHA=\(.baseRefOid)\nHEAD_SHA=\(.headRefOid)\nBASE_REF=\(.baseRefName)"')"
+```
+
+Reviewing pre-push with no PR yet? Then use the merge base against the branch you will
+target, not `HEAD~1`:
+
+```bash
+BASE_SHA=$(git merge-base HEAD origin/"$BASE_REF")
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
