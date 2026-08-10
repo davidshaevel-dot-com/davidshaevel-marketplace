@@ -179,12 +179,25 @@ or security-relevant.
 
 ---
 
+## Shipped as a skill
+
+**Resolved 2026-08-10: standalone skill now, delegation later.**
+
+The protocol ships as `skills/self-hosted-review/` plus `commands/self-hosted-review.md`,
+invocable as `/self-hosted-review`. Standalone rather than folded into
+`resolve-code-review` for one practical reason: TT-367 is actively rewriting that skill on
+another branch, and editing it here would guarantee a conflict. Once TT-367 ships, its
+reviewer auto-detection should **delegate** to this skill when it finds zero bots — one
+entry point, two implementations behind it.
+
+A process that only exists as a doc is invoked by someone remembering it exists. That is
+the same failure mode this repo's specs keep identifying elsewhere. The skill's
+`description` field is the actual trigger: it names the observable condition (a PR with
+zero bot reviews) so the situation invokes the process rather than the person having to.
+
 ## Open questions for implementation
 
-1. **Skill or section?** Likely a branch inside the enhanced `resolve-code-review` rather
-   than a separate skill — taken when reviewer auto-detection returns zero bots. That
-   keeps one entry point regardless of whether bots exist.
-2. **How much can be automated?** The negative-scoping lists are currently hand-written
+1. **How much can be automated?** The negative-scoping lists are currently hand-written
    per cycle. Cycle 1's findings could be fed to cycle 2 programmatically, since
    `ReportFindings` already returns them structured.
 3. **Does this satisfy the "never merge without code review" convention?** It did in
