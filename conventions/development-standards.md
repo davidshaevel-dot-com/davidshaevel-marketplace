@@ -94,8 +94,13 @@ Run the **self-hosted agent review** protocol instead:
 /self-hosted-review <N>      # a specific PR
 ```
 
-The skill ships with this plugin, so it is available in every consuming repo. It also
-auto-invokes when a PR has zero bot reviews.
+The skill ships with this plugin, so it is available in every consuming repo. Its
+`description` is written to trigger automatically when a PR has zero bot reviews — but
+skill invocation is model-mediated, so treat that as a strong tendency, not a guarantee.
+Invoke it explicitly when in doubt.
+
+<!-- Routing rule below is temporary — remove when TT-367 ships multi-bot support.
+     Canonical source: skills/self-hosted-review/SKILL.md "When this applies". -->
 
 **If the skill is unavailable** (older plugin version), the protocol is three subagent
 cycles, each told explicitly what *not* to look at so they complement rather than
@@ -105,9 +110,9 @@ duplicate:
    Steer it *away* from line-level nits and say a line-level pass follows.
 2. **Line-level** — `/code-review high <branch>`, passing a do-not-report list of every
    cycle-1 finding already fixed. Review the whole file, not just the diff.
-3. **Verification** — required when cycle 2's fixes materially changed the code. Scope to
-   the final state, pass a do-not-relitigate list of settled decisions, and allow
-   "no new issues found" as an answer.
+3. **Verification** — always runs, on the final state. Pass a do-not-relitigate list of
+   settled decisions and allow "no new issues found" as an answer. If it finds material
+   issues, fix and re-run once; if that still finds material issues, stop and escalate.
 
 Fix findings between cycles. Verify by content, not by line count. Post each cycle's
 findings to the PR as a comment — without bots, that is the only record review happened.
@@ -141,16 +146,25 @@ git push origin --delete <branch-name>
 
 Reply **in the comment thread** (not top-level).
 
-**IMPORTANT: Always start with `@gemini-code-assist` so they are notified of your response.**
+**IMPORTANT: Always start with an @-mention of the bot that wrote the comment**, so it is
+notified. That is `@chatgpt-codex-connector`, `@qodo-merge-pro`, or `@gemini-code-assist`
+— whichever actually authored it. Do not hardcode one; `gemini-code-assist` sunset
+2026-07-17 and mentioning it notifies nobody.
+
+Run the `gh` commands standalone — a `$()` assignment will not match a
+`Bash(gh repo view *)` permission:
 
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-gh api repos/${REPO}/pulls/<PR>/comments/<COMMENT_ID>/replies \
-  -f body="@gemini-code-assist Fixed. Changed X to Y."
+gh repo view --json nameWithOwner -q .nameWithOwner
+```
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<PR>/comments/<COMMENT_ID>/replies \
+  -f body="@<authoring-bot> Fixed. Changed X to Y."
 ```
 
 Every inline reply must include:
-- **`@gemini-code-assist` at the start** (required for notification)
+- **An @-mention of the authoring bot at the start** (required for notification)
 - What was fixed and how
 - Technical reasoning if declining
 
@@ -158,10 +172,10 @@ Every inline reply must include:
 
 Add a summary comment to the PR:
 
-**IMPORTANT: Always start with `@gemini-code-assist` so they are notified.**
+**IMPORTANT: Start with an @-mention of every bot that reviewed**, so they are notified.
 
 ```markdown
-@gemini-code-assist Review addressed:
+@<reviewing-bot> Review addressed:
 
 | # | Feedback | Resolution |
 |---|----------|------------|

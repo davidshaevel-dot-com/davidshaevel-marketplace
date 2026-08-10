@@ -56,8 +56,12 @@ Both blockers are tracked in **[TT-393 — v1.5.0 Codex remote git-source market
 | **No bot reviewed** | `self-hosted-review` |
 
 Gemini Code Assist sunset **2026-07-17**, so on `davidshaevel-dot-com` the last two rows
-are the common case. `self-hosted-review` also auto-invokes when a PR has zero bot
-reviews. Merging on "no bot responded" is not review.
+are the common case. `self-hosted-review` is written to trigger automatically when a PR
+has zero bot reviews, though invocation is model-mediated — invoke it explicitly if it
+doesn't fire. Merging on "no bot responded" is not review.
+
+<!-- Routing table above is temporary — remove when TT-367 ships multi-bot support.
+     Canonical source: skills/self-hosted-review/SKILL.md "When this applies". -->
 
 Consolidating both into one multi-bot resolver is tracked as TT-367.
 

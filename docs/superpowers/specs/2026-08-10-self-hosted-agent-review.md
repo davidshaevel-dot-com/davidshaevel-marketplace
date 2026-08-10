@@ -3,8 +3,8 @@
 **Date:** 2026-08-10
 **Linear issue:** [TT-472](https://linear.app/davidshaevel-dot-com/issue/TT-472)
 **Linear project:** [Agentic Code Review Setup](https://linear.app/davidshaevel-dot-com/project/agentic-code-review-setup-410658537fa3)
-**Status:** Documented from a successful end-to-end run. Not yet a plugin skill.
-**Companion to:** `2026-05-13-multi-agent-pr-review-design.md` (TT-367)
+**Status:** Shipped in plugin v1.4.1 as `skills/self-hosted-review/` + `/self-hosted-review`.
+**Companion to:** `2026-05-13-multi-agent-pr-review-design.md` (TT-367) — currently on branch `claude/tt-367-multi-agent-pr-review`, not yet on `main`
 
 ---
 
@@ -72,9 +72,13 @@ by cycle-1 fixes live outside the original diff.
 
 ### Cycle 3 — verification pass
 
-**Required whenever cycle 2's fixes materially changed the code.** On PR #3 the script
-went from ~100 to ~180 lines, and cycle 3 found four defects in code written to fix
-cycle 2.
+**Always runs.** It is the one lens no prior reviewer can have applied, because it
+reviews the fixes made in response to them. On PR #3 the script went from ~100 to ~180
+lines, and cycle 3 found four defects in code written to fix cycle 2.
+
+If cycle 3 itself finds material issues, fix and re-run it scoped to those fixes. If a
+re-run still finds material issues, stop and escalate — the change is too large to review
+as one unit, or the design is wrong.
 
 Scope it to the **final state of the changed files only**, and give it a
 **do-not-relitigate list**: accepted risks, deliberate trade-offs, and anything the user
@@ -142,8 +146,8 @@ check.**
 ## Rules that fall out of this
 
 1. **Fix between cycles.** Each reviewer sees improved code.
-2. **Always run a verification pass when fixes materially changed the code.** Reviewing
-   your own fixes is a distinct step, not paranoia.
+2. **Always run the verification pass.** Reviewing your own fixes is a distinct step, not
+   paranoia — and cycle-3 fixes need the same treatment, bounded by one re-run.
 3. **Verify by content, not by shape.** Line counts, file sizes and exit codes are
    proxies. Compare against a known-good baseline.
 4. **Carry decisions forward as exclusions.** Anything the user has decided is settled and
@@ -160,11 +164,16 @@ check.**
 
 | Situation | Protocol |
 |---|---|
-| Bots installed and responding | TT-367 bounded loop |
-| Bots installed, one quota-exhausted | TT-367 escalation framework |
+| `gemini-code-assist` responding | `resolve-code-review` |
+| Bots responding, multi-bot loop | TT-367 bounded loop — **not yet implemented**; use this protocol until it ships |
+| Bot quota-exhausted | TT-367 escalation — **not yet implemented**; this protocol surfaces the same three choices |
+| **A non-Gemini bot reviewed** (Codex, Qodo) | **This protocol** — `resolve-code-review` filters for Gemini and matches nothing |
 | **No bots respond at all** | **This protocol** |
 | Pre-push, before a PR exists | This protocol, cycles 1–2 |
 | Repo with no bot install (personal, private, new) | This protocol |
+
+TT-367's branch holds a spec and an implementation plan; nothing under `skills/` has
+changed. Treat every TT-367 row above as a forward reference.
 
 ---
 
@@ -185,8 +194,9 @@ or security-relevant.
 
 The protocol ships as `skills/self-hosted-review/` plus `commands/self-hosted-review.md`,
 invocable as `/self-hosted-review`. Standalone rather than folded into
-`resolve-code-review` for one practical reason: TT-367 is actively rewriting that skill on
-another branch, and editing it here would guarantee a conflict. Once TT-367 ships, its
+`resolve-code-review` for one practical reason: TT-367 is approved and will rewrite that
+skill, so editing it now creates a conflict later. (Its branch holds only a spec and a
+plan today — no `skills/` changes yet.) Once TT-367 ships, its
 reviewer auto-detection should **delegate** to this skill when it finds zero bots — one
 entry point, two implementations behind it.
 
@@ -200,9 +210,9 @@ zero bot reviews) so the situation invokes the process rather than the person ha
 1. **How much can be automated?** The negative-scoping lists are currently hand-written
    per cycle. Cycle 1's findings could be fed to cycle 2 programmatically, since
    `ReportFindings` already returns them structured.
-3. **Does this satisfy the "never merge without code review" convention?** It did in
-   practice on PR #3 — three independent reviews, 14 fixes. Worth an explicit ruling in
-   `conventions/development-standards.md`.
+3. ~~**Does this satisfy "never merge without code review"?**~~ **Answered** — ruled on in
+   `conventions/development-standards.md`, which now names this protocol as the required
+   path when no bot responds.
 4. **Should findings be posted as inline PR comments** rather than summary comments?
    `/code-review --comment` supports this.
 

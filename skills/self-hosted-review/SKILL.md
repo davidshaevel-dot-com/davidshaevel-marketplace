@@ -1,6 +1,6 @@
 ---
 name: self-hosted-review
-description: Use before merging any PR when no automated bot reviewer has responded — check with `gh pr view <N> --json reviews,comments` and if there are zero bot reviews, run this instead of merging unreviewed. Also use for pre-push review of destructive, scheduled, or security-relevant changes. Produces the review with subagents rather than waiting for a bot.
+description: Use before merging any PR when no automated bot reviewer has responded, OR when the only reviews came from a bot other than gemini-code-assist (Codex, Qodo) since resolve-code-review cannot process those. Check with `gh pr view <N> --json reviews,comments`. Also use for pre-push review of destructive, scheduled, or security-relevant changes, and for any change to review process, conventions, or files injected into other repos. Produces the review with subagents rather than waiting for a bot.
 ---
 
 # Self-Hosted Agent Review
@@ -9,12 +9,26 @@ Produce a code review using subagents when no bot reviewer exists. Three cycles 
 different lenses, each given an explicit exclusion list so they complement rather than
 duplicate each other.
 
-**Canonical rationale and worked example:** `docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md`
-(TT-472). Read it if you need the reasoning; this file is the procedure.
+> **Requires Claude Code.** This procedure depends on subagent dispatch, the
+> `/code-review` command, the `ReportFindings` tool, and the `superpowers` plugin. Codex
+> CLI has none of these — the other skills in this plugin are portable, this one is not.
+
+**Canonical rationale and worked example:** in the plugin repo at
+`docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md` (TT-472). That file does
+not ship to consuming repos; this one is the procedure and stands alone.
 
 ## When this applies
 
-Run `gh pr view <N> --json reviews,comments,additions,deletions` first.
+Find the PR if the user did not name one, then inspect it — separate commands, per the
+permission rule below:
+
+```bash
+gh pr view --json number -q .number
+```
+
+```bash
+gh pr view <N> --json reviews,comments
+```
 
 | Observed | Action |
 |---|---|
@@ -35,13 +49,29 @@ instructs replies to `@gemini-code-assist`. Handing a Codex or Qodo review to it
 its filter matches nothing and any reply @-mentions a bot that no longer exists. Until
 TT-367 lands multi-bot support, handle those reviews in this skill:
 
-1. Read every bot's comments — filter by the actual reviewer, not a hardcoded login.
-   **Paginate:** the endpoint's default `per_page` is 30, so a PR with several review
-   rounds will silently drop later comments.
+1. Read every bot's comments from **both** endpoints. **Paginate:** default `per_page` is
+   30, so a PR with several review rounds silently drops later comments.
+
+   Inline review comments:
    ```bash
    gh api "repos/<owner>/<repo>/pulls/<PR>/comments?per_page=100" --paginate \
      --jq '.[] | select(.user.type == "Bot") | select(.in_reply_to_id == null) | {id, user: .user.login, path, line, body}'
    ```
+
+   Issue-level comments — **do not skip this one.** A bot's review body and, critically,
+   its **quota-exhaustion notice** land here, not on the pulls endpoint. Reading only the
+   first query makes "the reviewer ran out of credits" structurally invisible:
+   ```bash
+   gh api "repos/<owner>/<repo>/issues/<PR>/comments?per_page=100" --paginate \
+     --jq '.[] | select(.user.type == "Bot") | {id, user: .user.login, body}'
+   ```
+
+   **If any bot reports a usage or quota limit, stop and surface the choice** rather than
+   quietly proceeding on the reviewers that remain. Three valid responses — merge on the
+   remaining reviewers with explicit acknowledgement, top up that reviewer, or hold until
+   it recovers. The user decides; do not converge silently. (This mirrors TT-367's
+   reviewer-exhausted escalation so the interim path doesn't establish a habit TT-367
+   would have to unwind.)
 2. Fix or decline each, then reply **in-thread @-mentioning the bot that wrote it**.
    Note the reply endpoint includes the PR number — omitting it 404s:
    ```bash
@@ -57,16 +87,27 @@ TT-367 lands multi-bot support, handle those reviews in this skill:
 Every PR gets at least one review pass. The convention is *never merge without code
 review*; this table decides how much, not whether.
 
+Scale by **reach and reversibility**, not file extension. A one-line change to a file
+injected into every consuming repo outranks a hundred lines in a throwaway script.
+
 | Change | Cycles |
 |---|---|
-| Docs, comments, config text | Cycle 1 only |
+| Docs, comments, config text local to one repo | Cycle 1 |
 | Ordinary code edits | 1 and 2 |
 | Destructive, scheduled, unattended, security-relevant, or touching backups | All three |
-| Already has a substantive bot or human review | Judgement — run the cycles that review did not cover; none is acceptable if it genuinely covered the change |
+| **Review process, conventions, or anything injected into other repos** | **All three**, regardless of file type |
+| Already reviewed by a bot or human | Run the lenses that review did not cover — see below. **Cycle 3 always runs** on the final state |
+
+**Cycle 3 is the floor.** Whatever else is skipped, the final state gets a verification
+pass. That is the one cycle no prior reviewer can have performed, because it reviews the
+fixes made in response to them.
+
+Judge "already covered" by **lens**, not by volume — architectural, line-level,
+verification are checkable; "substantive" is not. One bot's inline comments are the
+line-level lens and nothing more.
 
 Cycle 2 alone can use 20+ agents. That is right for a script that deletes files on a
-schedule and wrong for a typo fix. **Scaling down is not the same as skipping** — a PR
-with no review record at all should not merge.
+schedule and wrong for a typo fix. **Scaling down is not the same as skipping.**
 
 ## Procedure
 
@@ -142,8 +183,8 @@ Call `ReportFindings` once with the verified findings. **Fix them before cycle 3
 
 ### Cycle 3 — verification pass
 
-**Required whenever cycle 2's fixes materially changed the code.** Skip only if the
-fixes were trivial.
+**Always runs.** It is the one lens no prior reviewer can have applied, because it
+reviews the fixes made in response to them.
 
 Dispatch one `general-purpose` subagent scoped to the **final state of the changed files
 only**. Give it:
@@ -153,6 +194,26 @@ only**. Give it:
 - An instruction to reproduce findings **by execution**, not by reading.
 - Explicit permission for "no new issues found" to be the answer. A verification pass
   that manufactures findings to look useful is worse than none.
+
+#### When cycle 3 finds material issues
+
+Cycle-3 fixes are themselves unreviewed code — the same argument that justifies this
+cycle. So:
+
+1. Fix them, then **re-run cycle 3 scoped to those fixes only**.
+2. If a re-run still produces material findings, **stop and escalate.** Two failed
+   verification passes means the change is too large to review as one unit or the design
+   is wrong. Split the PR or revisit the approach — do not keep looping.
+
+A trivial re-run finding (a typo, a doc wording fix) does not require another pass. Use
+the same "material" test as elsewhere: would it change behaviour or mislead a reader?
+
+### Handling a finding you disagree with
+
+Do not silently drop it. Invoke `superpowers:receiving-code-review` for rigor, then
+either fix it or record it via `ReportFindings` as `skipped` / `no_change_needed` **with
+the reason**. A finding you cannot reproduce is `no_change_needed` plus a note on what
+you tried — not a deletion. Otherwise "14 of 15 fixed" is a number with no audit trail.
 
 ### After the cycles
 
@@ -180,9 +241,14 @@ only**. Give it:
 `resolve-code-review` handles the case where bots *do* respond — bounded loop, per-bot
 @-mentions, reviewer-exhausted escalation (TT-367).
 
-This skill handles N=0. They are complementary. Once TT-367 ships, its reviewer
-auto-detection should delegate here when it finds zero bots, giving one entry point
-regardless.
+This skill handles N=0 and non-Gemini bots. They are complementary. Once TT-367 ships,
+its reviewer auto-detection should delegate here when it finds zero bots, giving one
+entry point regardless.
+
+**The two "threes" are unrelated.** TT-367 locks 3 **rounds** — bot feedback round-trips
+with 60-second polling between them. This skill has 3 **cycles** — review lenses applied
+within a single round, no polling, nothing to wait for. The counts coinciding is a
+coincidence; do not try to reconcile them.
 
 ## Permissions
 
@@ -201,7 +267,8 @@ starting"), there is no workaround by composing them.
       "Bash(gh pr merge *)",      // squash merge after acceptance
       "Bash(gh api *)",           // read bot comments, post in-thread replies
       "Bash(git rev-parse *)",    // HEAD for pre-push review
-      "Bash(git merge-base *)"    // base for pre-push review
+      "Bash(git merge-base *)",   // base for pre-push review
+      "Bash(git push *)"          // push fixes between cycles so the PR reflects them
     ]
   }
 }
