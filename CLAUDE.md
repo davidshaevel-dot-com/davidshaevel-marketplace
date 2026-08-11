@@ -135,20 +135,30 @@ bash hooks/session-start.sh
 # Check plugin structure
 cat .claude-plugin/plugin.json | jq .
 
-# Version bump — THREE manifests carry a version; missing one ships a split release
-for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/plugin.json; do
-  jq '.version = "X.Y.Z"' "$f" > tmp && mv tmp "$f"
-done
-grep -h '"version"' .claude-plugin/*.json .codex-plugin/*.json   # confirm all three agree
+# Version bump — THREE manifests, but marketplace.json keeps its version NESTED.
+# Do NOT loop `jq '.version = ...'` over all three: marketplace.json has no top-level
+# .version, so that creates a bogus key and leaves the real one at the old number.
+V=X.Y.Z
+jq --arg v "$V" '.version = $v'             .claude-plugin/plugin.json  > tmp && mv tmp .claude-plugin/plugin.json
+jq --arg v "$V" '.version = $v'             .codex-plugin/plugin.json   > tmp && mv tmp .codex-plugin/plugin.json
+jq --arg v "$V" '.plugins[0].version = $v'  .claude-plugin/marketplace.json > tmp && mv tmp .claude-plugin/marketplace.json
+
+# Verify — must print the new version exactly three times and nothing else
+grep -rh '"version"' .claude-plugin/ .codex-plugin/
 ```
 
 ---
 
 ## Gotchas
 
-- **Three manifests carry a version**, not one: `.claude-plugin/plugin.json`,
-  `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`. The v1.4.1 bump initially
-  missed the Codex one and shipped a split release until it was caught.
+- **Three manifests carry a version, and one of them hides it.** `.claude-plugin/plugin.json`
+  and `.codex-plugin/plugin.json` use a top-level `.version`; `.claude-plugin/marketplace.json`
+  keeps it at `.plugins[0].version` and has **no** top-level `.version`. The bump loop
+  documented here until 2026-08-11 ran `jq '.version = ...'` over all three, which invented a
+  top-level key in marketplace.json and left the real plugin version at the previous number —
+  a split release produced by the very command written to prevent one. Verify with
+  `grep -rh '"version"' .claude-plugin/ .codex-plugin/`: exactly three lines, all equal.
+  The v1.4.1 bump separately missed the Codex manifest and shipped split until caught.
 - **A plugin upgrade never affects the running session.** The skill registry is built at
   startup, so a newly added skill returns `Unknown skill` in the current session even when
   all three install locations are correct. Restart, then verify by invoking a skill that only
@@ -164,9 +174,35 @@ grep -h '"version"' .claude-plugin/*.json .codex-plugin/*.json   # confirm all t
   from every fresh clone, so `backup-local-config.sh` fails after an upgrade until it is
   relinked. Use `ln -s`, not `cp` — `cp` follows the symlink and de-links the new version
   (TT-452).
-- **Version numbers get claimed in advance.** Check `SESSION_LOG.md` and open Linear issues
-  before picking one: TT-372 had been slated for v1.4.1 before the self-hosted-review skill
-  took that number, and now needs re-versioning.
+- **Never reserve a version number in advance.** An issue owns *"the next minor"*, never a
+  specific number. Whichever qualifying change ships first takes the number; everything else
+  shifts. Reserving collided three times before this rule existed: TT-372 was slated for
+  v1.4.0 (TT-392 took it), re-slated to v1.4.1 (the self-hosted-review skill took it), and
+  TT-393 carried `v1.5.0` in its own title until TT-473 reclaimed it. Refer to planned work
+  by issue ID in titles, bodies and acceptance criteria — never by version.
+
+---
+
+## Versioning policy
+
+Adopted 2026-08-11 (TT-473). Assign the number **at release time, from the change itself**.
+
+| Bump | When |
+|------|------|
+| **MAJOR** | Removing or renaming a skill, command, or convention — anything a consumer must react to |
+| **MINOR** | A new skill, a new command, or **any change to `conventions/development-standards.md`** |
+| **PATCH** | A bug fix inside an existing skill or script: no new surface, no convention text change |
+
+The convention-file rule is not a formality. `conventions/development-standards.md` is injected
+by the SessionStart hook into **every session of every project**, including repos unrelated to
+this plugin. Changing it changes behaviour everywhere without anyone opting in, which is the
+opposite of what a patch release promises.
+
+**v1.4.1 was misnumbered.** It shipped a skill, a slash command, and +90 lines of injected
+conventions — a minor by every line of the table above. It was re-released as **v1.5.0** under
+TT-473, and v1.4.1 is superseded. This is a deliberate exception to SemVer §3 ("released
+contents must not be modified"), taken because the plugin has no dependents and no consumer
+pins a version range; the release notes record the correction rather than hiding it.
 
 ---
 
