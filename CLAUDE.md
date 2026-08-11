@@ -158,7 +158,8 @@ grep -rh '"version"' .claude-plugin/ .codex-plugin/
   top-level key in marketplace.json and left the real plugin version at the previous number —
   a split release produced by the very command written to prevent one. Verify with
   `grep -rh '"version"' .claude-plugin/ .codex-plugin/`: exactly three lines, all equal.
-  The v1.4.1 bump separately missed the Codex manifest and shipped split until caught.
+  The v1.4.1 bump separately missed the Codex manifest mid-work; no tag ever carried the
+  three out of sync, so the split was caught before release rather than shipped.
 - **A plugin upgrade never affects the running session.** The skill registry is built at
   startup, so a newly added skill returns `Unknown skill` in the current session even when
   all three install locations are correct. Restart, then verify by invoking a skill that only
@@ -198,8 +199,8 @@ by the SessionStart hook into **every session of every project**, including repo
 this plugin. Changing it changes behaviour everywhere without anyone opting in, which is the
 opposite of what a patch release promises.
 
-**v1.4.1 was misnumbered.** It shipped a skill, a slash command, and +90 lines of injected
-conventions — a minor by every line of the table above. It was re-released as **v1.5.0** under
+**v1.4.1 was misnumbered.** It shipped a skill (+352), a slash command (+12), and 90 changed
+lines of injected conventions (+81/−9) — a minor on each of the three grounds independently. It was re-released as **v1.5.0** under
 TT-473, and v1.4.1 is superseded. This is a deliberate exception to SemVer §3 ("released
 contents must not be modified"), taken because the plugin has no dependents and no consumer
 pins a version range; the release notes record the correction rather than hiding it.
