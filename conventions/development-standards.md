@@ -94,10 +94,17 @@ Run the **self-hosted agent review** protocol instead:
 /self-hosted-review <N>      # a specific PR
 ```
 
-The skill ships with this plugin, so it is available in every consuming repo. Its
-`description` is written to trigger automatically when a PR has zero bot reviews — but
-skill invocation is model-mediated, so treat that as a strong tendency, not a guarantee.
-Invoke it explicitly when in doubt.
+The skill ships with this plugin, so it is available in every consuming repo **running
+Claude Code**. Its `description` is written to trigger automatically when a PR has zero
+bot reviews — but skill invocation is model-mediated, so treat that as a strong tendency,
+not a guarantee. Invoke it explicitly when in doubt.
+
+> **Codex CLI sessions cannot run this protocol.** It needs subagent dispatch,
+> `/code-review`, `ReportFindings` and the `superpowers` plugin — none of which exist
+> under Codex, and `.codex-plugin/plugin.json` declares no `commands` key. A Codex
+> session that reaches a PR with no bot review should **hold and request review from a
+> Claude Code session** rather than merge unreviewed. Do not treat the manual fallback
+> below as a Codex-executable substitute; it describes the same Claude-only machinery.
 
 <!-- Routing rule below is temporary — remove when TT-367 ships multi-bot support.
      Canonical source: skills/self-hosted-review/SKILL.md "When this applies". -->
@@ -186,7 +193,13 @@ Add a summary comment to the PR:
 
 **Resolution column format:** Include both the commit reference AND a brief summary of how the feedback was addressed.
 
-For the full code review resolution workflow, use the `resolve-code-review` skill.
+**Which skill resolves the review** depends on who reviewed:
+
+* `gemini-code-assist` → `resolve-code-review` (built for that bot specifically)
+* **Any other bot** (Codex, Qodo, …) → `/self-hosted-review`. `resolve-code-review`
+  filters for `gemini-code-assist[bot]`, so it matches nothing and would report "no
+  unresolved feedback" on a PR full of findings.
+* No bot at all → `/self-hosted-review`, per "When no bot reviewer is available" above.
 
 ---
 

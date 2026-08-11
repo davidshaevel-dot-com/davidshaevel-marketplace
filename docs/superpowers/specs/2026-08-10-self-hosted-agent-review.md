@@ -44,6 +44,12 @@ Dispatch a `general-purpose` subagent using the `superpowers:requesting-code-rev
 template. Give it the base/head SHAs, the change description, and the original
 requirements or plan.
 
+**Derive the base with `git merge-base`, not the PR's `baseRefOid`.** `baseRefOid` is the
+base-branch tip; if the target branch advanced after the PR opened, a two-dot diff against
+it renders every intervening commit as a reversion and the subagent reviews files the PR
+never touched. Fetch the base ref first — a local `origin/<base>` may not exist in a
+bare+worktree checkout.
+
 Direct it toward:
 
 * Plan alignment — does the implementation match what was asked? Are deviations
@@ -169,7 +175,7 @@ check.**
 | Bot quota-exhausted | TT-367 escalation — **not yet implemented**; this protocol surfaces the same three choices |
 | **A non-Gemini bot reviewed** (Codex, Qodo) | **This protocol** — `resolve-code-review` filters for Gemini and matches nothing |
 | **No bots respond at all** | **This protocol** |
-| Pre-push, before a PR exists | This protocol, cycles 1–2 |
+| Pre-push, before a PR exists | This protocol; cycle count per the scaling rules, not fixed at two |
 | Repo with no bot install (personal, private, new) | This protocol |
 
 TT-367's branch holds a spec and an implementation plan; nothing under `skills/` has

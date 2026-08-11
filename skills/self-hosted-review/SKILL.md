@@ -35,12 +35,15 @@ gh pr view <N> --json reviews,comments
 | **`gemini-code-assist[bot]` reviewed** | Use `resolve-code-review` — it is built for that bot specifically |
 | **Another bot reviewed** (Codex, Qodo, …) | **Address its comments here.** See below — `resolve-code-review` cannot process them yet |
 | **Zero bot reviews** | **Run this** |
-| No PR yet, destructive change | Run cycles 1–2 pre-push |
+| No PR yet | Run this pre-push |
 
 As of 2026-08-10 on `davidshaevel-dot-com`, zero is the common case: Gemini Code Assist
 sunset 2026-07-17, Qodo Merge is not installed, Codex is quota-limited.
 
 **"No bot responded" is not review.** Do not merge on it.
+
+This table decides **which protocol** applies. How many cycles to run is decided solely by
+"Scale to the change" below — the two never overlap, so they cannot disagree.
 
 ### Why non-Gemini bots are handled here
 
@@ -49,22 +52,35 @@ instructs replies to `@gemini-code-assist`. Handing a Codex or Qodo review to it
 its filter matches nothing and any reply @-mentions a bot that no longer exists. Until
 TT-367 lands multi-bot support, handle those reviews in this skill:
 
-1. Read every bot's comments from **both** endpoints. **Paginate:** default `per_page` is
-   30, so a PR with several review rounds silently drops later comments.
+1. Read bot feedback from **all three** endpoints. They hold different things and none is
+   a superset of the others. **Paginate everywhere:** default `per_page` is 30, so a PR
+   with several review rounds silently drops later items.
 
-   Inline review comments:
+   **a. Review bodies** — a bot's overall verdict and severity summary. Missing this reads
+   only the nits and calls it "all feedback addressed":
    ```bash
-   gh api "repos/<owner>/<repo>/pulls/<PR>/comments?per_page=100" --paginate \
-     --jq '.[] | select(.user.type == "Bot") | select(.in_reply_to_id == null) | {id, user: .user.login, path, line, body}'
+   gh api "repos/<owner>/<repo>/pulls/<PR>/reviews?per_page=100" --paginate \
+     --jq '.[] | select(.user.type == "Bot") | select(.body != "") | {id, user: .user.login, state, body}'
    ```
 
-   Issue-level comments — **do not skip this one.** A bot's review body and, critically,
-   its **quota-exhaustion notice** land here, not on the pulls endpoint. Reading only the
-   first query makes "the reviewer ran out of credits" structurally invisible:
+   **b. Inline review comments** — the per-line findings:
+   ```bash
+   gh api "repos/<owner>/<repo>/pulls/<PR>/comments?per_page=100" --paginate \
+     --jq '.[] | select(.user.type == "Bot") | {id, user: .user.login, path, line, in_reply_to_id, body}'
+   ```
+
+   **c. Issue-level comments** — standalone conversation comments, and often where a
+   **quota-exhaustion notice** lands:
    ```bash
    gh api "repos/<owner>/<repo>/issues/<PR>/comments?per_page=100" --paginate \
      --jq '.[] | select(.user.type == "Bot") | {id, user: .user.login, body}'
    ```
+
+   **Do not filter on `in_reply_to_id == null`.** A bot's in-thread follow-up ("this is
+   still wrong") carries a non-null value and would be discarded, so the thread reads as
+   resolved when it isn't. Instead fetch every comment, group by thread, and skip only
+   threads whose **last** comment is already your reply — that also prevents duplicate
+   replies when the skill is re-run.
 
    **If any bot reports a usage or quota limit, stop and surface the choice** rather than
    quietly proceeding on the reviewers that remain. Three valid responses — merge on the
@@ -72,11 +88,24 @@ TT-367 lands multi-bot support, handle those reviews in this skill:
    it recovers. The user decides; do not converge silently. (This mirrors TT-367's
    reviewer-exhausted escalation so the interim path doesn't establish a habit TT-367
    would have to unwind.)
-2. Fix or decline each, then reply **in-thread @-mentioning the bot that wrote it**.
-   Note the reply endpoint includes the PR number — omitting it 404s:
+2. Fix or decline each, then reply **@-mentioning the bot that wrote it**.
+
+   **Route the reply by where the comment came from — the ID namespaces are disjoint.**
+   An issue-comment ID sent to the pulls endpoint 404s (observed: pulls IDs ~3.7e9,
+   issues IDs ~5.2e9).
+
+   From query **b** (inline) — reply in-thread. Note the path includes the PR number;
+   omitting it also 404s:
    ```bash
    gh api "repos/<owner>/<repo>/pulls/<PR>/comments/<COMMENT_ID>/replies" \
      -f body="@<that-bot> Fixed. <what changed and why>"
+   ```
+
+   From query **a** (review body) or **c** (issue comment) — there is no thread to reply
+   into. Post an issue-level comment instead:
+   ```bash
+   gh api "repos/<owner>/<repo>/issues/<PR>/comments" \
+     -f body="@<that-bot> Re: your review — <what changed and why>"
    ```
 3. Post a summary comment tagging every bot that reviewed.
 4. A single bot's review is **not** a substitute for the cycles below on destructive or
@@ -128,21 +157,31 @@ gh repo view --json nameWithOwner -q .nameWithOwner
 ```
 
 ```bash
-gh pr view <PR> --json baseRefOid,headRefOid,baseRefName
+gh pr view <PR> --json headRefOid,baseRefName
 ```
 
-Read `baseRefOid` as the base SHA and `headRefOid` as the head SHA from that output.
+`headRefOid` is the head SHA. **Do not use `baseRefOid` as the base** — it is the
+base-branch *tip*, not the branch point. If `main` has advanced since the PR opened (the
+common case here, since branches sit waiting for a bot that never answers), a two-dot diff
+against it shows every intervening commit as a *reversion*, and subagents review files the
+PR never touched.
 
-Reviewing pre-push with no PR yet? Use the merge base against the branch you will target,
-not `HEAD~1` — and take the two `git` commands separately for the same reason:
+Derive the real base with `merge-base` against the ref named by `baseRefName`:
 
 ```bash
-git merge-base HEAD origin/<base-branch>
+git fetch origin <baseRefName>
 ```
 
 ```bash
-git rev-parse HEAD
+git merge-base HEAD FETCH_HEAD
 ```
+
+The `fetch` is not optional. A local `origin/<base>` ref may not exist at all — in a
+bare+worktree checkout `git rev-parse origin/main` fails outright — and `FETCH_HEAD`
+sidesteps that by not depending on a local remote-tracking ref.
+
+Reviewing pre-push with no PR yet? Same two commands, naming the branch you will target.
+Take each separately, per the permission rule above.
 
 Create a todo per cycle you intend to run.
 
@@ -223,7 +262,28 @@ you tried — not a deletion. Otherwise "14 of 15 fixed" is a number with no aud
    why. Without bots this is the only record that review happened.
 3. **Update the PR title and body if scope grew.** A PR that started as one line and
    ended at +374/−34 has a misleading title.
-4. Merge per the repo's convention (squash), then clean up worktree and branches.
+4. **Commit and push the fixes.** Everything above happened in the working tree; none of
+   it is on the PR yet.
+   ```bash
+   git add -A
+   ```
+   ```bash
+   git commit -m "fix(<scope>): address review findings"
+   ```
+   ```bash
+   git push
+   ```
+5. **Confirm the PR reflects the fixes before merging.** `gh pr merge --squash` squashes
+   the last *pushed* head — merging with unpushed fixes puts the unfixed branch on `main`
+   while the summary comment claims otherwise, and step 6's cleanup then deletes them.
+   ```bash
+   gh pr view <PR> --json headRefOid -q .headRefOid
+   ```
+   ```bash
+   git rev-parse HEAD
+   ```
+   These must match. If they don't, go back to step 4.
+6. Merge per the repo's convention (squash), then clean up worktree and branches.
 
 ## Rules
 
@@ -267,8 +327,13 @@ starting"), there is no workaround by composing them.
       "Bash(gh pr merge *)",      // squash merge after acceptance
       "Bash(gh api *)",           // read bot comments, post in-thread replies
       "Bash(git rev-parse *)",    // HEAD for pre-push review
-      "Bash(git merge-base *)",   // base for pre-push review
-      "Bash(git push *)"          // push fixes between cycles so the PR reflects them
+      "Bash(git merge-base *)",   // derive the real base (never baseRefOid)
+      "Bash(git fetch *)",        // fetch the base ref; local origin/<base> may not exist
+      "Bash(git diff *)",         // cycles 1 and 3 read the diff between base and head
+      "Bash(git add *)",          // stage fixes made between cycles
+      "Bash(git commit *)",       // commit them
+      "Bash(git push *)",         // push fixes so the PR reflects them before merge
+      "Bash(git worktree *)"      // cleanup after merge
     ]
   }
 }
