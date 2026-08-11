@@ -120,7 +120,25 @@ startup. Updating all three locations above while a session is running leaves th
 the old skill set — invoking a newly added skill returns `Unknown skill` even though every
 file on disk is correct. Verified on 2026-08-11 upgrading 1.4.0 → 1.4.1.
 
-### 5. Verify the new version actually loaded
+### 5. Restore the gitignored config
+
+`config/backup-config.json` is gitignored, so a fresh clone of the new tag **does not have
+it** and `backup-local-config.sh` fails outright with "config file not found". Both repos
+silently stopped backing up after the 1.4.0 → 1.4.1 upgrade until this was noticed.
+
+Link it rather than copying — `cp` follows the symlink and produces a real file, which
+silently de-links the new version so later edits never reach it:
+
+```bash
+NEW=~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<NEW_VERSION>/config/backup-config.json
+ln -s ~/.claude/config/backup-config.json "$NEW"
+```
+
+Tracked as [TT-452](https://linear.app/davidshaevel-dot-com/issue/TT-452) — the durable
+fix is for the script to resolve config outside the version-pinned cache by default, which
+removes this step entirely.
+
+### 6. Verify the new version actually loaded
 
 Updating the files is not evidence the session picked them up. In the **new** session:
 

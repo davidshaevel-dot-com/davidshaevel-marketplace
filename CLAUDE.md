@@ -160,6 +160,10 @@ grep -h '"version"' .claude-plugin/*.json .codex-plugin/*.json   # confirm all t
 - **Not every skill is portable.** `self-hosted-review` requires subagent dispatch,
   `/code-review`, `ReportFindings` and `superpowers` — Claude Code only. The other four are
   gh/rclone/file-editing and work under both agents.
+- **Gitignored config does not survive an upgrade.** `config/backup-config.json` is absent
+  from every fresh clone, so `backup-local-config.sh` fails after an upgrade until it is
+  relinked. Use `ln -s`, not `cp` — `cp` follows the symlink and de-links the new version
+  (TT-452).
 - **Version numbers get claimed in advance.** Check `SESSION_LOG.md` and open Linear issues
   before picking one: TT-372 had been slated for v1.4.1 before the self-hosted-review skill
   took that number, and now needs re-versioning.
