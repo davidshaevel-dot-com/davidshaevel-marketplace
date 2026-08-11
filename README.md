@@ -31,11 +31,11 @@ The same conventions, hooks, and skills serve both agents. Claude Code loads the
 1. **Plugin layout.** Codex's local source resolver rejects entries that resolve to the marketplace root; the plugin needs to live in a `./plugins/<plugin-name>/` subdirectory per the Codex `plugin-json-spec`. Our current repo uses a root layout (which Claude Code supports natively).
 2. **Skill path resolution.** Several skills (`backup-local-config`, `session-handoff` backup step) invoke scripts via `${CLAUDE_PLUGIN_ROOT}/scripts/...`. In a Codex session that variable is not populated; the commands fail. Need to make skill path resolution agent-agnostic (or detect `$PLUGIN_ROOT` first).
 
-Both blockers are tracked in **[TT-393 — v1.5.0 Codex remote git-source marketplace install support](https://linear.app/davidshaevel-dot-com/issue/TT-393)**.
+Both blockers are tracked in **[TT-393 — Codex remote git-source marketplace install support](https://linear.app/davidshaevel-dot-com/issue/TT-393)**.
 
-**For now (v1.4.0):** if you want to experiment with the plugin in Codex, clone the repo locally and register a personal-marketplace entry pointing at the local path (Codex's `~/.agents/plugins/marketplace.json`). When the SessionStart hook fires for the first time, Codex will surface a trust prompt — accept it to enable `conventions/development-standards.md` injection. Skills that don't depend on `${CLAUDE_PLUGIN_ROOT}` (`resolve-code-review`, `bootstrap-project`) work; skills that do (`backup-local-config`, `session-handoff` backup step) won't until v1.5.0.
+**For now (v1.4.0):** if you want to experiment with the plugin in Codex, clone the repo locally and register a personal-marketplace entry pointing at the local path (Codex's `~/.agents/plugins/marketplace.json`). When the SessionStart hook fires for the first time, Codex will surface a trust prompt — accept it to enable `conventions/development-standards.md` injection. Skills that don't depend on `${CLAUDE_PLUGIN_ROOT}` (`resolve-code-review`, `bootstrap-project`) work; skills that do (`backup-local-config`, `session-handoff` backup step) won't until TT-393 lands.
 
-**For full multi-agent install parity:** track [TT-393](https://linear.app/davidshaevel-dot-com/issue/TT-393). v1.5.0 will restore the remote git-source install path (`[marketplaces.davidshaevel-marketplace] source_type = "git"` in `~/.codex/config.toml`) once the architectural work lands.
+**For full multi-agent install parity:** track [TT-393](https://linear.app/davidshaevel-dot-com/issue/TT-393), which will restore the remote git-source install path (`[marketplaces.davidshaevel-marketplace] source_type = "git"` in `~/.codex/config.toml`) once the architectural work lands.
 
 ## Skills
 
@@ -118,13 +118,13 @@ Permission changes and plugin updates require a session restart to take effect.
 **This is not optional and there is no workaround.** A session builds its skill registry at
 startup. Updating all three locations above while a session is running leaves that session on
 the old skill set — invoking a newly added skill returns `Unknown skill` even though every
-file on disk is correct. Verified on 2026-08-11 upgrading 1.4.0 → 1.4.1.
+file on disk is correct. Verified on 2026-08-11 upgrading 1.4.0 → 1.5.0.
 
 ### 5. Restore the gitignored config
 
 `config/backup-config.json` is gitignored, so a fresh clone of the new tag **does not have
 it** and `backup-local-config.sh` fails outright with "config file not found". Both repos
-silently stopped backing up after the 1.4.0 → 1.4.1 upgrade until this was noticed.
+silently stopped backing up after the 1.4.0 → 1.5.0 upgrade until this was noticed.
 
 Link it rather than copying — `cp` follows the symlink and produces a real file, which
 silently de-links the new version so later edits never reach it:

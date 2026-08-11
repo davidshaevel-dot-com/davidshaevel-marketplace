@@ -3,7 +3,9 @@
 **Date:** 2026-08-10
 **Linear issue:** [TT-472](https://linear.app/davidshaevel-dot-com/issue/TT-472)
 **Linear project:** [Agentic Code Review Setup](https://linear.app/davidshaevel-dot-com/project/agentic-code-review-setup-410658537fa3)
-**Status:** Shipped in plugin v1.4.1 as `skills/self-hosted-review/` + `/self-hosted-review`.
+**Status:** Shipped in plugin v1.5.0 as `skills/self-hosted-review/` + `/self-hosted-review`.
+Originally released as v1.4.1; renumbered under TT-473 because a new skill plus a new command
+plus a change to the auto-injected conventions is a minor, not a patch.
 **Companion to:** `2026-05-13-multi-agent-pr-review-design.md` (TT-367) — currently on branch `claude/tt-367-multi-agent-pr-review`, not yet on `main`
 
 ---
