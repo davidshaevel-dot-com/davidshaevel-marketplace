@@ -121,8 +121,8 @@ injected into every consuming repo outranks a hundred lines in a throwaway scrip
 
 | Change | Cycles |
 |---|---|
-| Docs, comments, config text local to one repo | Cycle 1 |
-| Ordinary code edits | 1 and 2 |
+| Docs, comments, config text local to one repo | Cycles 1 and 3 |
+| Ordinary code edits | Cycles 1, 2 and 3 |
 | Destructive, scheduled, unattended, security-relevant, or touching backups | All three |
 | **Review process, conventions, or anything injected into other repos** | **All three**, regardless of file type |
 | Already reviewed by a bot or human | Run the lenses that review did not cover — see below. **Cycle 3 always runs** on the final state |
@@ -321,12 +321,12 @@ starting"), there is no workaround by composing them.
   "permissions": {
     "allow": [
       "Bash(gh repo view *)",     // resolve owner/repo
-      "Bash(gh pr view *)",       // PR metadata, baseRefOid / headRefOid
+      "Bash(gh pr view *)",       // PR metadata: headRefOid, baseRefName
       "Bash(gh pr comment *)",    // post each cycle's findings
       "Bash(gh pr edit *)",       // update title/body when scope grows
       "Bash(gh pr merge *)",      // squash merge after acceptance
       "Bash(gh api *)",           // read bot comments, post in-thread replies
-      "Bash(git rev-parse *)",    // HEAD for pre-push review
+      "Bash(git rev-parse *)",    // confirm HEAD matches the pushed PR head
       "Bash(git merge-base *)",   // derive the real base (never baseRefOid)
       "Bash(git fetch *)",        // fetch the base ref; local origin/<base> may not exist
       "Bash(git diff *)",         // cycles 1 and 3 read the diff between base and head
