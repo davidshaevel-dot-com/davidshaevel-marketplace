@@ -72,13 +72,70 @@ Do not pin a stale model version — use the model actually running the session.
    ```bash
    gh pr create --head <branch-name> --title "..." --body "..."
    ```
-3. **Wait for review** (Gemini Code Assist or human reviewer)
+3. **Wait for review** (bot reviewer or human reviewer). **If no reviewer responds, see
+   "When no bot reviewer is available" below — do not merge unreviewed.**
 4. **Address feedback:**
    - CRITICAL and HIGH issues: Must fix
    - MEDIUM issues: Evaluate and decide
    - LOW issues: Fix if trivial, decline if YAGNI
 5. **Post summary comment** with all fixes addressed
 6. **Merge only after** all review feedback resolved
+
+### When no bot reviewer is available
+
+Gemini Code Assist sunset **2026-07-17** and Qodo Merge is not yet installed on
+`davidshaevel-dot-com`, so PRs there frequently open with **zero** automated reviewers.
+"No bot responded" is not review, and it is not a reason to merge unreviewed.
+
+Run the **self-hosted agent review** protocol instead:
+
+```
+/self-hosted-review          # current branch's PR
+/self-hosted-review <N>      # a specific PR
+```
+
+The skill ships with this plugin, so it is available in every consuming repo **running
+Claude Code**. Its `description` is written to trigger automatically when a PR has zero
+bot reviews — but skill invocation is model-mediated, so treat that as a strong tendency,
+not a guarantee. Invoke it explicitly when in doubt.
+
+> **Codex CLI sessions cannot run this protocol.** It needs subagent dispatch,
+> `/code-review`, `ReportFindings` and the `superpowers` plugin — none of which exist
+> under Codex, and `.codex-plugin/plugin.json` declares no `commands` key. A Codex
+> session that reaches a PR with no bot review should **hold and request review from a
+> Claude Code session** rather than merge unreviewed. Do not treat the manual fallback
+> below as a Codex-executable substitute; it describes the same Claude-only machinery.
+
+<!-- Routing rule below is temporary — remove when TT-367 ships multi-bot support.
+     Canonical source: skills/self-hosted-review/SKILL.md "When this applies". -->
+
+**If the skill is unavailable** (older plugin version), the protocol is three subagent
+cycles, each told explicitly what *not* to look at so they complement rather than
+duplicate:
+
+1. **Architectural** — plan alignment, failure modes, deployment model, doc accuracy.
+   Steer it *away* from line-level nits and say a line-level pass follows.
+2. **Line-level** — `/code-review high <branch>`, passing a do-not-report list of every
+   cycle-1 finding already fixed. Review the whole file, not just the diff.
+3. **Verification** — always runs, on the final state. Pass a do-not-relitigate list of
+   settled decisions and allow "no new issues found" as an answer. If it finds material
+   issues, fix and re-run once; if that still finds material issues, stop and escalate.
+
+Fix findings between cycles. Verify by content, not by line count. Post each cycle's
+findings to the PR as a comment — without bots, that is the only record review happened.
+
+Full rationale and worked example live in the plugin repo at
+`docs/superpowers/specs/2026-08-10-self-hosted-agent-review.md` (TT-472).
+
+This is interim. TT-367 remains the destination once bot reviewers are restored; this
+protocol is the branch taken when reviewer detection finds none, and stays useful for
+pre-push review and repos with no bot install.
+
+> **Note on `resolve-code-review`:** it currently filters for `gemini-code-assist[bot]`
+> only. A Codex or Qodo review handed to it matches nothing and would reply to a bot that
+> no longer exists. Until TT-367 adds multi-bot support, handle non-Gemini bot reviews
+> via `/self-hosted-review`, which reads comments by `user.type == "Bot"` and replies to
+> whichever bot actually wrote them.
 
 **Merge Strategy:** Always use **Squash and Merge** for pull requests.
 
@@ -96,16 +153,25 @@ git push origin --delete <branch-name>
 
 Reply **in the comment thread** (not top-level).
 
-**IMPORTANT: Always start with `@gemini-code-assist` so they are notified of your response.**
+**IMPORTANT: Always start with an @-mention of the bot that wrote the comment**, so it is
+notified. That is `@chatgpt-codex-connector`, `@qodo-merge-pro`, or `@gemini-code-assist`
+— whichever actually authored it. Do not hardcode one; `gemini-code-assist` sunset
+2026-07-17 and mentioning it notifies nobody.
+
+Run the `gh` commands standalone — a `$()` assignment will not match a
+`Bash(gh repo view *)` permission:
 
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-gh api repos/${REPO}/pulls/<PR>/comments/<COMMENT_ID>/replies \
-  -f body="@gemini-code-assist Fixed. Changed X to Y."
+gh repo view --json nameWithOwner -q .nameWithOwner
+```
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<PR>/comments/<COMMENT_ID>/replies \
+  -f body="@<authoring-bot> Fixed. Changed X to Y."
 ```
 
 Every inline reply must include:
-- **`@gemini-code-assist` at the start** (required for notification)
+- **An @-mention of the authoring bot at the start** (required for notification)
 - What was fixed and how
 - Technical reasoning if declining
 
@@ -113,10 +179,10 @@ Every inline reply must include:
 
 Add a summary comment to the PR:
 
-**IMPORTANT: Always start with `@gemini-code-assist` so they are notified.**
+**IMPORTANT: Start with an @-mention of every bot that reviewed**, so they are notified.
 
 ```markdown
-@gemini-code-assist Review addressed:
+@<reviewing-bot> Review addressed:
 
 | # | Feedback | Resolution |
 |---|----------|------------|
@@ -127,7 +193,13 @@ Add a summary comment to the PR:
 
 **Resolution column format:** Include both the commit reference AND a brief summary of how the feedback was addressed.
 
-For the full code review resolution workflow, use the `resolve-code-review` skill.
+**Which skill resolves the review** depends on who reviewed:
+
+* `gemini-code-assist` → `resolve-code-review` (built for that bot specifically)
+* **Any other bot** (Codex, Qodo, …) → `/self-hosted-review`. `resolve-code-review`
+  filters for `gemini-code-assist[bot]`, so it matches nothing and would report "no
+  unresolved feedback" on a PR full of findings.
+* No bot at all → `/self-hosted-review`, per "When no bot reviewer is available" above.
 
 ---
 
