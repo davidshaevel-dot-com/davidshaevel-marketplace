@@ -115,6 +115,24 @@ Update `~/.claude/plugins/installed_plugins.json` to point to the new version:
 
 Permission changes and plugin updates require a session restart to take effect.
 
+**This is not optional and there is no workaround.** A session builds its skill registry at
+startup. Updating all three locations above while a session is running leaves that session on
+the old skill set — invoking a newly added skill returns `Unknown skill` even though every
+file on disk is correct. Verified on 2026-08-11 upgrading 1.4.0 → 1.4.1.
+
+### 5. Verify the new version actually loaded
+
+Updating the files is not evidence the session picked them up. In the **new** session:
+
+```bash
+# all three locations should agree
+grep -h '"version"' ~/.claude/plugins/marketplaces/davidshaevel-marketplace/.claude-plugin/plugin.json
+ls ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/
+```
+
+Then invoke a skill that only exists in the new version. If it returns `Unknown skill`, the
+session is still on the old registry — restart again rather than assuming it worked.
+
 ## Backup Local Config
 
 Back up gitignored files (SESSION_LOG.md, CLAUDE.local.md, .envrc, .env, etc.) to Google Drive. Runs automatically at session end via session-handoff, or on-demand.

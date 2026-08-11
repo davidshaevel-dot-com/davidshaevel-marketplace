@@ -135,9 +135,34 @@ bash hooks/session-start.sh
 # Check plugin structure
 cat .claude-plugin/plugin.json | jq .
 
-# Version bump (update plugin.json version field)
-jq '.version = "X.Y.Z"' .claude-plugin/plugin.json > tmp && mv tmp .claude-plugin/plugin.json
+# Version bump — THREE manifests carry a version; missing one ships a split release
+for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/plugin.json; do
+  jq '.version = "X.Y.Z"' "$f" > tmp && mv tmp "$f"
+done
+grep -h '"version"' .claude-plugin/*.json .codex-plugin/*.json   # confirm all three agree
 ```
+
+---
+
+## Gotchas
+
+- **Three manifests carry a version**, not one: `.claude-plugin/plugin.json`,
+  `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`. The v1.4.1 bump initially
+  missed the Codex one and shipped a split release until it was caught.
+- **A plugin upgrade never affects the running session.** The skill registry is built at
+  startup, so a newly added skill returns `Unknown skill` in the current session even when
+  all three install locations are correct. Restart, then verify by invoking a skill that only
+  exists in the new version — see README "Updating the Plugin" steps 4–5.
+- **`skills/` is discovered as a directory** (`"skills": "./skills/"`), so a new skill needs
+  no manifest registration — but a new **command** does need its own `commands/<name>.md`,
+  and the Codex manifest declares no `commands` key at all, so slash commands are Claude
+  Code-only.
+- **Not every skill is portable.** `self-hosted-review` requires subagent dispatch,
+  `/code-review`, `ReportFindings` and `superpowers` — Claude Code only. The other four are
+  gh/rclone/file-editing and work under both agents.
+- **Version numbers get claimed in advance.** Check `SESSION_LOG.md` and open Linear issues
+  before picking one: TT-372 had been slated for v1.4.1 before the self-hosted-review skill
+  took that number, and now needs re-versioning.
 
 ---
 
