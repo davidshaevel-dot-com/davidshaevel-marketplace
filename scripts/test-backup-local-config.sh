@@ -518,7 +518,12 @@ val_case() {  # $1 json, $2 want-exit, $3 expected literal, $4 label
   local rc
   rc=$(run_backup "$TMP/c-val.json" "$R")
   assert_exit "$rc" "$2" "$4"
-  [[ -n "$3" ]] && assert_grep "$OUT" "$3" "$4 — message names the problem"
+  # `if`, not a trailing `&&`: the && form returns 1 when $3 is empty, which is inert
+  # only because this harness deliberately omits `set -e`. It would become a real bug
+  # the moment that changed, or if such a call ended the file.
+  if [[ -n "$3" ]]; then
+    assert_grep "$OUT" "$3" "$4 — message names the problem"
+  fi
 }
 
 # The typo that motivated whole-document validation: cycle 1's top-level-only check
