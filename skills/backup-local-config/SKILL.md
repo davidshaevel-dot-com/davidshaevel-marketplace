@@ -47,10 +47,31 @@ For a dry run (preview without uploading):
 
 ### 3. Report Results
 
-Summarize the script output to the user:
+**Read the exit code, not just the output.** The script ends with a status token and a
+matching exit code:
+
+| Exit | Token | Meaning | What to do |
+|------|-------|---------|------------|
+| 0 | `OK` | Everything configured was backed up | Report the counts |
+| 2 | `PARTIAL` | The backup ran and succeeded, but the **configuration is stale** — an entry was present-but-unsupported, or never resolved in any worktree | **Not a failure.** Surface the `WARNING:` lines verbatim and tell the user which config entry is wrong |
+| 1 | `FAILED` | A copy actually failed | Troubleshoot below |
+
+Then summarize:
 - How many files were backed up
-- How many were skipped (not found in the repo/worktree)
+- **Missing** (no such path) vs **Unsupported** (present but not backed up) — these are
+  different problems and the script now distinguishes them. "Missing" is often normal;
+  "Unsupported" never is
+- Any `WARNING:` lines — a configured entry that resolved to nothing backable in *any*
+  worktree is a typo, a moved path, or an unsupported type
 - Any failures and their causes
+
+A clean `Failed (0)` is **not** evidence of a good backup. That combination — no
+failures, no output anyone read — hid a broken `reports/` entry for four months. For
+anything that matters, verify the bytes:
+
+```bash
+rclone check <local-dir> <remote-dir> --one-way
+```
 
 If there are failures, suggest troubleshooting steps:
 - Check that rclone remote is configured: `rclone listremotes`
