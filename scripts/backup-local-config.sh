@@ -160,21 +160,68 @@ if ! jq -e . "$CONFIG_FILE" >/dev/null 2>&1; then
   exit 1
 fi
 
-for key in globalFiles repoOverrides; do
-  case "$key" in
-    globalFiles)    want=array  ;;
-    repoOverrides)  want=object ;;
-  esac
-  actual=$(jq -r --arg k "$key" 'if has($k) then (.[$k] | type) else "absent" end' "$CONFIG_FILE")
-  if [[ "$actual" != "$want" && "$actual" != "absent" ]]; then
-    echo "Error: '$key' in $CONFIG_FILE must be $want (found $actual)." >&2
-    exit 1
-  fi
-done
+# One jq program validates the WHOLE shape, including inside repoOverrides. Checking only
+# the two top-level keys left `repoOverrides.<repo>.additionalfiles` (wrong case) invisible
+# — the entry was silently dropped and the run reported a clean OK, which is the very
+# failure this release exists to eliminate, reproduced through the release itself.
+#
+# It also runs inside `if !` so a jq RUNTIME error cannot abort the script through set -e.
+# Unguarded, a top-level array (`has()` on a non-object) or a wrong-typed additionalFiles
+# killed the run with a raw jq message and exit 5 — outside the documented 0/1/2 contract,
+# so the skill docs told the agent to report a config typo as a tool crash.
+CONFIG_ERRORS=$(jq -r '
+  def kind: if type == "null" then "absent" else type end;
+  [
+    (if type != "object" then "the config must be a JSON object, found \(type)" else empty end),
+
+    (if type == "object" then
+      (if has("globalFiles") and (.globalFiles | type) != "array"
+         then "globalFiles must be an array, found \(.globalFiles | type)" else empty end),
+      (if (.globalFiles? // []) | type == "array" then
+         (.globalFiles[]? | select(type != "string")
+            | "globalFiles contains a \(type) — every entry must be a string")
+       else empty end),
+
+      (if has("repoOverrides") and (.repoOverrides | type) != "object"
+         then "repoOverrides must be an object, found \(.repoOverrides | type)" else empty end),
+      (if (.repoOverrides? // {}) | type == "object" then
+         (.repoOverrides | to_entries[]
+            | . as $e
+            | (if ($e.value | type) != "object"
+                 then "repoOverrides.\($e.key) must be an object, found \($e.value | type)"
+                 else empty end),
+              (if ($e.value | type) == "object" then
+                 ($e.value | keys[] | select(. != "additionalFiles")
+                    | "repoOverrides.\($e.key).\(.) is not a recognised key — did you mean additionalFiles?"),
+                 (if ($e.value | has("additionalFiles")) and (($e.value.additionalFiles | type) != "array")
+                    then "repoOverrides.\($e.key).additionalFiles must be an array, found \($e.value.additionalFiles | type)"
+                    else empty end),
+                 (if (($e.value.additionalFiles? // []) | type) == "array" then
+                    ($e.value.additionalFiles[]? | select(type != "string")
+                       | "repoOverrides.\($e.key).additionalFiles contains a \(type) — every entry must be a string")
+                  else empty end)
+               else empty end))
+       else empty end)
+     else empty end)
+  ] | .[]
+' "$CONFIG_FILE" 2>&1) || {
+  echo "Error: could not validate $CONFIG_FILE" >&2
+  echo "$CONFIG_ERRORS" >&2
+  exit 1
+}
+
+if [[ -n "$CONFIG_ERRORS" ]]; then
+  echo "Error: $CONFIG_FILE is not shaped correctly:" >&2
+  while IFS= read -r e; do
+    [[ -n "$e" ]] && echo "  - $e" >&2
+  done <<< "$CONFIG_ERRORS"
+  exit 1
+fi
 
 # A key that is present-but-misspelled looks identical to one that is absent, so warn on
-# anything unrecognised rather than ignoring it.
-UNKNOWN_KEYS=$(jq -r 'keys[] | select(. != "backupDir" and . != "globalFiles" and . != "repoOverrides")' "$CONFIG_FILE")
+# anything unrecognised rather than ignoring it. (Nested unknown keys are hard errors
+# above; top-level ones are only warnings because a future version may add keys.)
+UNKNOWN_KEYS=$(jq -r 'keys[] | select(. != "backupDir" and . != "globalFiles" and . != "repoOverrides")' "$CONFIG_FILE" 2>/dev/null || true)
 if [[ -n "$UNKNOWN_KEYS" ]]; then
   while IFS= read -r k; do
     [[ -n "$k" ]] && CONFIG_WARNINGS+=("unrecognised key '$k' in $CONFIG_FILE — misspelled? it is being ignored")
@@ -262,17 +309,33 @@ if [[ ${#UNIQUE_FILES[@]} -gt 0 ]]; then
   FILE_LIST=("${UNIQUE_FILES[@]}")
 fi
 
+# path_exists PATH → 0 if anything is there, INCLUDING a dangling symlink
+#
+# `[[ -e ]]` follows the link and is FALSE for a broken symlink, so a path that plainly
+# exists (lstat succeeds, ls shows it) would be reported as "no such path" — the very
+# verdict-without-a-basis this release exists to stop, just relocated. `-L` catches the
+# link itself.
+path_exists() {
+  [[ -e "$1" || -L "$1" ]]
+}
+
 # path_kind PATH → a human reason why a present path was not backed up
 #
 # "Unsupported" on its own would repeat the sin this release is fixing: a verdict
 # without its basis. Name what the thing actually is.
+#
+# Order matters. A dangling symlink must be identified BEFORE -d/-f, both of which
+# dereference and would fall through to the wrong branch; and an intact symlink must not
+# be called "broken" merely because its target is not a regular file.
 path_kind() {
-  if [[ -d "$1" ]]; then
+  if [[ -L "$1" && ! -e "$1" ]]; then
+    echo "broken symlink — its target does not exist"
+  elif [[ -d "$1" ]]; then
     echo "directory — directory entries are not supported yet, see TT-372"
   elif [[ -L "$1" ]]; then
-    echo "broken symlink"
+    echo "symlink to something that is not a regular file"
   else
-    echo "not a regular file"
+    echo "not a regular file (socket, fifo, or device)"
   fi
 }
 
@@ -315,10 +378,47 @@ FAILED_FILES=()
 # has no associative arrays, so this is a newline-delimited string queried with grep.
 FOUND_RELPATHS=""
 
+# scan_tree ROOT DEST_DIR — classify and back up every configured entry under ROOT
+#
+# ONE implementation, called once per worktree and once for a standard repo. It used to
+# be two verbatim copies differing only in the root variable, which meant every fix had
+# to be applied twice and a fix applied once made a standard repo and a bare+worktree
+# repo classify the same file differently. Divergence like that is the mechanism by which
+# `reports/` stayed mislabelled for four months.
+scan_tree() {
+  local root="$1" dest="$2" file src
+  [[ ${#FILE_LIST[@]} -gt 0 ]] || return 0
+  for file in "${FILE_LIST[@]}"; do
+    src="$root/$file"
+    if [[ -f "$src" ]]; then
+      FOUND_RELPATHS="$FOUND_RELPATHS$file
+"
+      if backup_file "$src" "$dest"; then
+        BACKED_UP_FILES+=("$src")
+      else
+        FAILED_FILES+=("$src")
+      fi
+    elif path_exists "$src"; then
+      UNSUPPORTED_FILES+=("$src ($(path_kind "$src"))")
+    else
+      MISSING_FILES+=("$src")
+    fi
+  done
+}
+
 # --- Execute backup ---
 if [[ "$IS_BARE_WORKTREE" == "true" ]]; then
-  # Bare+worktree: back up files from each worktree
-  # Use --porcelain for reliable parsing (handles spaces in paths)
+  # Enumerate first and check the status. Inside a process substitution the failure is
+  # invisible: git exits 128, the loop body never runs, and the summary reads like an
+  # ordinary empty result — "your layout defeated the enumerator" is then
+  # indistinguishable from "nothing you configured exists here".
+  if ! WORKTREE_LIST=$(git -C "$REPO_PATH" worktree list --porcelain 2>&1); then
+    echo "Error: could not enumerate worktrees in $REPO_PATH" >&2
+    echo "$WORKTREE_LIST" >&2
+    exit 1
+  fi
+
+  WORKTREE_PATH=""
   while IFS= read -r line; do
     if [[ "$line" == "worktree "* ]]; then
       WORKTREE_PATH="${line#worktree }"
@@ -328,51 +428,15 @@ if [[ "$IS_BARE_WORKTREE" == "true" ]]; then
     elif [[ -z "$line" && -n "$WORKTREE_PATH" ]]; then
       # Blank line marks end of a worktree block — process it
       WORKTREE_NAME=$(basename "$WORKTREE_PATH")
-      DEST_DIR="$BACKUP_DIR/$REPO_NAME/$WORKTREE_NAME"
-
-      if [[ ${#FILE_LIST[@]} -gt 0 ]]; then
-        for file in "${FILE_LIST[@]}"; do
-          SRC="$WORKTREE_PATH/$file"
-          if [[ -f "$SRC" ]]; then
-            FOUND_RELPATHS="$FOUND_RELPATHS$file
-"
-            if backup_file "$SRC" "$DEST_DIR"; then
-              BACKED_UP_FILES+=("$SRC")
-            else
-              FAILED_FILES+=("$SRC")
-            fi
-          elif [[ -e "$SRC" ]]; then
-            UNSUPPORTED_FILES+=("$SRC ($(path_kind "$SRC"))")
-          else
-            MISSING_FILES+=("$SRC")
-          fi
-        done
-      fi
+      scan_tree "$WORKTREE_PATH" "$BACKUP_DIR/$REPO_NAME/$WORKTREE_NAME"
       WORKTREE_PATH=""
     fi
-  done < <(git -C "$REPO_PATH" worktree list --porcelain; echo "")
+  done <<< "$WORKTREE_LIST
+
+"
 else
   # Standard repo: back up files from repo root
-  DEST_DIR="$BACKUP_DIR/$REPO_NAME"
-
-  if [[ ${#FILE_LIST[@]} -gt 0 ]]; then
-    for file in "${FILE_LIST[@]}"; do
-      SRC="$REPO_PATH/$file"
-      if [[ -f "$SRC" ]]; then
-        FOUND_RELPATHS="$FOUND_RELPATHS$file
-"
-        if backup_file "$SRC" "$DEST_DIR"; then
-          BACKED_UP_FILES+=("$SRC")
-        else
-          FAILED_FILES+=("$SRC")
-        fi
-      elif [[ -e "$SRC" ]]; then
-        UNSUPPORTED_FILES+=("$SRC ($(path_kind "$SRC"))")
-      else
-        MISSING_FILES+=("$SRC")
-      fi
-    done
-  fi
+  scan_tree "$REPO_PATH" "$BACKUP_DIR/$REPO_NAME"
 fi
 
 # --- Never-found roll-up ---
@@ -394,7 +458,12 @@ fi
 if [[ -n "$REPO_SPECIFIC" ]]; then
   while IFS= read -r file; do
     [[ -n "$file" ]] || continue
-    if ! printf '%s\n' "$FOUND_RELPATHS" | grep -Fxq -- "$file"; then
+    # Here-string, not `printf | grep`. Under pipefail, grep -q exits on the first
+    # match while printf is still writing; once the string exceeds the ~64KB pipe
+    # buffer printf dies with EPIPE and the pipeline reports 141 EVEN ON A MATCH,
+    # inverting this test and reporting successfully-backed-up entries as never found.
+    # Reproduced on bash 3.2 with a 259KB string whose first line matched.
+    if ! grep -Fxq -- "$file" <<< "$FOUND_RELPATHS"; then
       WARNINGS+=("configured entry for '$REPO_NAME' never backed up from any worktree: $file")
     fi
   done <<< "$REPO_SPECIFIC"
@@ -408,7 +477,13 @@ fi
 
 # Every globalFile missing everywhere is not proof of a bad config, but it is worth one
 # line: it usually means the repo is not what the operator thought it was.
-if [[ ${#FILE_LIST[@]} -gt 0 && ${#BACKED_UP_FILES[@]} -eq 0 && ${#FAILED_FILES[@]} -eq 0 ]]; then
+# UNSUPPORTED_FILES must be in this condition. Without it, a repo whose entries all
+# resolved but are unsupported — exactly the laptop-maintenance/reports shape — is told
+# "is this the repo you meant?", which asserts a conclusion the check cannot support and
+# points at the wrong diagnosis. That is the same defect the MISSING/UNSUPPORTED split
+# was introduced to fix.
+if [[ ${#FILE_LIST[@]} -gt 0 && ${#BACKED_UP_FILES[@]} -eq 0 \
+      && ${#FAILED_FILES[@]} -eq 0 && ${#UNSUPPORTED_FILES[@]} -eq 0 ]]; then
   WARNINGS+=("no configured entry resolved anywhere in '$REPO_NAME' — is this the repo you meant?")
 fi
 

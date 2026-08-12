@@ -60,6 +60,13 @@ export GIT_COMMITTER_NAME="test" GIT_COMMITTER_EMAIL="test@example.invalid"
 export CLAUDE_CONFIG_DIR="$TMP/claude-home"
 mkdir -p "$CLAUDE_CONFIG_DIR/config"
 
+# An ambient BACKUP_CONFIG_FILE — this repo uses direnv, so an exported value is a
+# realistic developer state — wins the candidate search for every case that deliberately
+# runs WITHOUT an override. Those cases would then exercise the developer's real config,
+# whose backupDir is a live gdrive: remote, and this suite would perform real uploads to
+# Google Drive while its header promises nothing outside $TMP is touched.
+unset BACKUP_CONFIG_FILE
+
 PASS=0
 FAIL=0
 CURRENT_CASE=""
@@ -89,12 +96,36 @@ assert_exit() {  # $1 actual, $2 expected, $3 label
   if [[ "$1" == "$2" ]]; then ok "$3 (exit $1)"; else bad "$3 (exit $1, want $2)"; fi
 }
 
-assert_grep() {  # $1 file, $2 pattern, $3 label
-  if grep -q -- "$2" "$1"; then ok "$3"; else bad "$3 (no match for '$2')"; fi
+# -F: patterns here are literal output text containing (, ), ', / and — . Treating them
+# as regexes makes some assertions match more loosely than intended.
+assert_grep() {  # $1 file, $2 literal, $3 label
+  if grep -qF -- "$2" "$1"; then ok "$3"; else bad "$3 (no match for '$2')"; fi
 }
 
 assert_not_grep() {
-  if grep -q -- "$2" "$1"; then bad "$3 (unexpected match for '$2')"; else ok "$3"; fi
+  if grep -qF -- "$2" "$1"; then bad "$3 (unexpected match for '$2')"; else ok "$3"; fi
+}
+
+# assert_in_bucket — the entry must appear under a SPECIFIC summary bucket.
+#
+# `assert_grep "$OUT" "Unsupported — present but NOT backed up"` proves nothing: that
+# header is printed unconditionally, even when the bucket is empty and reads "(none)".
+# And grepping for a filename anywhere in the output matches it under ANY bucket, so a
+# misclassification passes. Both mistakes were live in this suite and made it report
+# green over behaviour it never exercised. Extract the bucket, then match inside it.
+assert_in_bucket() {  # $1 bucket header prefix, $2 literal entry, $3 label
+  # Bucket headers are "  <Header> (N):" and their entries are indented four spaces.
+  local section
+  section=$(awk -v h="$1" '
+    index($0, h) > 0 && /:$/ { inb = 1; next }
+    inb && /^    / { print; next }
+    inb { inb = 0 }
+  ' "$OUT")
+  if printf '%s\n' "$section" | grep -qF -- "$2"; then
+    ok "$3"
+  else
+    bad "$3 ('$2' not under '$1')"
+  fi
 }
 
 # documents_bug — pins CURRENT, KNOWN-WRONG behaviour so the release that fixes it has
@@ -242,16 +273,35 @@ reset_drive classify
 R="$TMP/repo-classify"
 mk_standard_repo "$R"
 echo "log" > "$R/SESSION_LOG.md"
-ln -s "$R/does-not-exist" "$R/dangling.md"
+ln -s "./does-not-exist" "$R/dangling.md"     # broken symlink: lstat succeeds, stat fails
+mkfifo "$R/afifo"
+ln -s "./afifo" "$R/pipe-link"                # INTACT symlink to a non-regular file
+mkdir -p "$R/realdir"
+ln -s "./realdir" "$R/dirlink"                # intact symlink to a directory
 write_config "$TMP/c-classify.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-classify":{"additionalFiles":["nope.md","dangling.md"]}}'
+  '{"repo-classify":{"additionalFiles":["nope.md","dangling.md","pipe-link","dirlink"]}}'
 RC=$(run_backup "$TMP/c-classify.json" "$R")
 
-assert_grep "$OUT" "Missing — no such path" "missing bucket present"
-assert_grep "$OUT" "nope.md" "absent entry classified"
-assert_grep "$OUT" "Unsupported — present but NOT backed up" "unsupported bucket present"
-assert_grep "$OUT" "dangling.md" "broken symlink reported"
+# Bucket-scoped: grepping the whole output would match a filename under ANY bucket, so a
+# misclassification would pass. These assertions must be able to fail.
+assert_in_bucket "Missing — no such path" "nope.md" "absent entry is Missing"
+assert_in_bucket "Unsupported — present but NOT backed up" "dangling.md" \
+  "broken symlink is Unsupported, NOT 'no such path'"
+assert_in_bucket "Unsupported — present but NOT backed up" "pipe-link" \
+  "intact symlink to a fifo is Unsupported"
+assert_in_bucket "Unsupported — present but NOT backed up" "dirlink" \
+  "symlink to a directory is Unsupported"
+
+# The REASON must match the actual type — a wrong reason is a verdict without a basis,
+# which is the whole defect class this release addresses.
+assert_grep "$OUT" "dangling.md (broken symlink — its target does not exist)" \
+  "broken symlink's reason is accurate"
+assert_grep "$OUT" "pipe-link (symlink to something that is not a regular file)" \
+  "intact symlink is NOT called broken"
+assert_grep "$OUT" "dirlink (directory — directory entries are not supported yet" \
+  "symlink-to-directory reads as a directory"
+
 assert_not_grep "$OUT" "Skipped — not found" "the old misleading label is gone"
 assert_grep "$OUT" "never backed up from any worktree" "never-found roll-up fired"
 assert_grep "$OUT" "PARTIAL" "status token is PARTIAL"
@@ -349,7 +399,7 @@ cat > "$TMP/c-type.json" <<EOF
 {"backupDir":"testlocal:$DRIVE","globalFiles":"SESSION_LOG.md","repoOverrides":{}}
 EOF
 RC=$(run_backup "$TMP/c-type.json" "$R")
-assert_grep "$OUT" "must be array (found string)" "wrong-typed globalFiles rejected"
+assert_grep "$OUT" "globalFiles must be an array, found string" "wrong-typed globalFiles rejected"
 assert_exit "$RC" 1 "wrong type fails closed"
 
 echo '{ not json' > "$TMP/c-bad.json"
