@@ -185,7 +185,7 @@ CONFIG_ERRORS=$(jq -r '
       (if has("repoOverrides") and (.repoOverrides | type) != "object"
          then "repoOverrides must be an object, found \(.repoOverrides | type)" else empty end),
       (if (.repoOverrides? // {}) | type == "object" then
-         (.repoOverrides | to_entries[]
+         ((.repoOverrides // {}) | to_entries[]
             | . as $e
             | (if ($e.value | type) != "object"
                  then "repoOverrides.\($e.key) must be an object, found \($e.value | type)"

@@ -18,7 +18,10 @@ Back up configured gitignored files from the current repository to Google Drive 
 - `rclone` installed (`brew install rclone`)
 - `jq` installed (`brew install jq`)
 - Google Drive remote configured in rclone (`rclone config`)
-- `config/backup-config.json` configured in the plugin directory
+- A config at `~/.claude/config/backup-config.json` (NOT in the plugin directory — that
+  location is inside the version-pinned cache and does not survive an upgrade, TT-452).
+  Every run prints `Using config: <path>` as its first line; if that is not the
+  `~/.claude/config/` one, say so.
 
 ## Process
 
@@ -80,4 +83,4 @@ rclone check <local-dir> <remote-dir> --one-way
 If there are failures, suggest troubleshooting steps:
 - Check that rclone remote is configured: `rclone listremotes`
 - Check that the backup directory exists: `rclone ls gdrive:session-backups`
-- Verify file paths in `config/backup-config.json`
+- Verify file paths in the config named by the run's `Using config:` line

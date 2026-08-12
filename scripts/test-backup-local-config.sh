@@ -466,6 +466,85 @@ RC=$(run_backup "$TMP/c-fail.json" "$R")
 assert_grep "$OUT" "FAILED" "status token is FAILED"
 assert_exit "$RC" 1 "a copy failure exits 1, distinct from PARTIAL"
 
+# ==============================================================================
+# Unsupported alone must degrade the status — no roll-up warning to lean on
+# ==============================================================================
+# Both of these survived deliberate mutation before this case existed: deleting
+# UNSUPPORTED_FILES from either the PARTIAL condition or the "wrong repo?" guard left the
+# suite green at 60/60, because every other unsupported fixture also trips the never-found
+# roll-up. Sourcing the entry from globalFiles removes that crutch — the roll-up is scoped
+# to repoOverrides by design, so UNSUPPORTED_FILES is the ONLY thing that can degrade this
+# run.
+start_case "unsupported entry alone degrades status, without a roll-up warning"
+reset_drive unsuponly
+R="$TMP/repo-unsuponly"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+mkdir -p "$R/reports"; echo "r" > "$R/reports/a.md"
+write_config "$TMP/c-unsuponly.json" "testlocal:$DRIVE" \
+  '["SESSION_LOG.md","reports"]' \
+  '{}'
+RC=$(run_backup "$TMP/c-unsuponly.json" "$R")
+
+assert_grep "$OUT" "warnings=0" "no roll-up warning fires (globalFiles are out of its scope)"
+assert_in_bucket "Unsupported — present but NOT backed up" "reports" "the directory is Unsupported"
+assert_grep "$OUT" "PARTIAL" "an unsupported entry alone is enough for PARTIAL"
+assert_exit "$RC" 2 "and enough for exit 2"
+# The "wrong repo?" guard only fires when NOTHING was backed up, so a fixture that also
+# backs up a file cannot test it — that crutch let the guard's UNSUPPORTED_FILES term
+# survive deliberate deletion. Configure ONLY the unsupported directory: backed_up=0,
+# failed=0, unsupported=1, which is exactly the laptop-maintenance/reports shape.
+reset_drive unsuponly2
+write_config "$TMP/c-unsuponly2.json" "testlocal:$DRIVE" '["reports"]' '{}'
+RC=$(run_backup "$TMP/c-unsuponly2.json" "$R")
+
+assert_grep "$OUT" "backed_up=0" "nothing was backed up"
+assert_grep "$OUT" "unsupported=1" "the only entry is unsupported"
+assert_not_grep "$OUT" "is this the repo you meant" \
+  "an entry that RESOLVED is never called a wrong-repo mistake"
+assert_exit "$RC" 2 "still PARTIAL on the strength of the unsupported entry alone"
+
+# ==============================================================================
+# Config validator — the headline cycle-2 fix, previously untested
+# ==============================================================================
+start_case "config validator: whole-document shape checking"
+reset_drive validator
+R="$TMP/repo-val"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+
+val_case() {  # $1 json, $2 want-exit, $3 expected literal, $4 label
+  printf '%s' "$1" > "$TMP/c-val.json"
+  local rc
+  rc=$(run_backup "$TMP/c-val.json" "$R")
+  assert_exit "$rc" "$2" "$4"
+  [[ -n "$3" ]] && assert_grep "$OUT" "$3" "$4 — message names the problem"
+}
+
+# The typo that motivated whole-document validation: cycle 1's top-level-only check
+# passed this, and the run reported a clean OK while dropping the entry entirely.
+val_case "{\"backupDir\":\"testlocal:$DRIVE\",\"globalFiles\":[\"SESSION_LOG.md\"],\"repoOverrides\":{\"repo-val\":{\"additionalfiles\":[\"reports\"]}}}" \
+  1 "additionalfiles is not a recognised key" "nested misspelled key is rejected"
+
+val_case "[\"SESSION_LOG.md\"]" \
+  1 "must be a JSON object" "top-level array is rejected"
+
+val_case "{\"backupDir\":\"testlocal:$DRIVE\",\"globalFiles\":[{\"a\":1}]}" \
+  1 "every entry must be a string" "non-string array element is rejected"
+
+val_case "{\"backupDir\":\"testlocal:$DRIVE\",\"repoOverrides\":{\"repo-val\":{\"additionalFiles\":\"x.md\"}}}" \
+  1 "additionalFiles must be an array" "wrong-typed additionalFiles is rejected"
+
+val_case "{\"backupDir\":\"testlocal:$DRIVE\",\"repoOverrides\":\"nope\"}" \
+  1 "repoOverrides must be an object" "wrong-typed repoOverrides is rejected"
+
+# REGRESSION GUARD. The first version of the validator piped a bare `.repoOverrides` into
+# to_entries, which is a jq runtime error when the key is absent — so a perfectly valid
+# config without repoOverrides could not run AT ALL. Caught by cycle 3, not by this suite,
+# because nothing here exercised a config lacking that key.
+val_case "{\"backupDir\":\"testlocal:$DRIVE\",\"globalFiles\":[\"SESSION_LOG.md\"]}" \
+  0 "" "a config with NO repoOverrides is valid and runs"
+
 # --- summary ------------------------------------------------------------------
 echo ""
 echo "=============================================="
