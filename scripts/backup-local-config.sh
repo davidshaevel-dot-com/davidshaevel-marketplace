@@ -58,6 +58,21 @@ CANONICAL_CONFIG="$CLAUDE_DIR/config/backup-config.json"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LEGACY_CONFIG="$PLUGIN_ROOT/config/backup-config.json"
 
+# Warnings raised during config resolution. Merged into the run's warning list later, so
+# a config problem degrades the STATUS token instead of scrolling past on stderr.
+CONFIG_WARNINGS=()
+
+# An explicit override is a statement of intent. If it is set and does not resolve, that
+# is a typo, not a reason to quietly use something else — failing open here would also
+# mean a mistyped test fixture path silently runs the suite against the real config and
+# the real Drive remote.
+if [[ -n "${BACKUP_CONFIG_FILE:-}" && ! -f "${BACKUP_CONFIG_FILE:-}" ]]; then
+  echo "Error: \$BACKUP_CONFIG_FILE is set but does not name a readable file:" >&2
+  echo "  $BACKUP_CONFIG_FILE" >&2
+  echo "Unset it to fall back to $CANONICAL_CONFIG." >&2
+  exit 1
+fi
+
 CONFIG_CANDIDATES=(
   "${BACKUP_CONFIG_FILE:-}"
   "$CANONICAL_CONFIG"
@@ -100,10 +115,22 @@ fi
 # not name the canonical path, the config is somewhere an upgrade can destroy.
 echo "Using config: $CONFIG_FILE"
 
+# Using the legacy path IS the TT-452 condition. It must not report OK: this run works,
+# and the next upgrade deletes the config out from under it. That is precisely what
+# PARTIAL means here, so it goes in the warning list rather than scrolling past on stderr.
 if [[ "$CONFIG_FILE" == "$LEGACY_CONFIG" ]]; then
-  echo "WARNING: using the plugin-local config at $CONFIG_FILE." >&2
-  echo "WARNING: this path does not survive a plugin upgrade (TT-452)." >&2
-  echo "WARNING: move it to $CANONICAL_CONFIG — see README 'Backup Local Config'." >&2
+  CONFIG_WARNINGS+=("config lives inside the plugin at $CONFIG_FILE — the next upgrade will delete it (TT-452); move it to $CANONICAL_CONFIG")
+fi
+
+# A plugin-local config that exists but LOST is invisible otherwise, and the TT-452
+# migration deliberately leaves stale copies on disk until the upgrade is verified.
+# Naming it is what drives the cleanup — and it is not auto-migration.
+#
+# Scoped to the legacy path only. A canonical config shadowed by an explicit
+# $BACKUP_CONFIG_FILE is the override working as designed, and warning about it would
+# fire on every deliberate override — including every test run.
+if [[ -f "$LEGACY_CONFIG" && "$LEGACY_CONFIG" != "$CONFIG_FILE" ]]; then
+  CONFIG_WARNINGS+=("a stale plugin-local config exists and was IGNORED: $LEGACY_CONFIG — delete it (TT-452)")
 fi
 
 # --- Dependency checks ---
@@ -118,6 +145,40 @@ if ! command -v jq &>/dev/null; then
   echo "Error: jq is not installed." >&2
   echo "Install with: brew install jq" >&2
   exit 1
+fi
+
+# --- Validate config shape ---
+#
+# jq's `?` operator swallows a missing or wrong-typed key, so `.globalFiles[]?` yields
+# nothing for `globalfiles` (wrong case), for a string where an array was meant, and for
+# a key that is simply absent. The run then backs up zero files and reports a clean OK —
+# a silent success, which is the single failure mode this script exists to eliminate.
+# Check the shape explicitly and fail closed.
+if ! jq -e . "$CONFIG_FILE" >/dev/null 2>&1; then
+  echo "Error: $CONFIG_FILE is not valid JSON." >&2
+  echo "Check it with: jq . $CONFIG_FILE" >&2
+  exit 1
+fi
+
+for key in globalFiles repoOverrides; do
+  case "$key" in
+    globalFiles)    want=array  ;;
+    repoOverrides)  want=object ;;
+  esac
+  actual=$(jq -r --arg k "$key" 'if has($k) then (.[$k] | type) else "absent" end' "$CONFIG_FILE")
+  if [[ "$actual" != "$want" && "$actual" != "absent" ]]; then
+    echo "Error: '$key' in $CONFIG_FILE must be $want (found $actual)." >&2
+    exit 1
+  fi
+done
+
+# A key that is present-but-misspelled looks identical to one that is absent, so warn on
+# anything unrecognised rather than ignoring it.
+UNKNOWN_KEYS=$(jq -r 'keys[] | select(. != "backupDir" and . != "globalFiles" and . != "repoOverrides")' "$CONFIG_FILE")
+if [[ -n "$UNKNOWN_KEYS" ]]; then
+  while IFS= read -r k; do
+    [[ -n "$k" ]] && CONFIG_WARNINGS+=("unrecognised key '$k' in $CONFIG_FILE — misspelled? it is being ignored")
+  done <<< "$UNKNOWN_KEYS"
 fi
 
 # --- Read config ---
@@ -161,11 +222,24 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && FILE_LIST+=("$line")
 done < <(jq -r '.globalFiles[]?' "$CONFIG_FILE")
 
+# Repo-specific entries are tracked separately. The never-found roll-up applies only to
+# THESE, because the two kinds of entry mean different things:
+#   globalFiles      — speculative. "back this up wherever it exists." A repo with no
+#                      CLAUDE.local.md is completely normal, and warning about it would
+#                      fire forever on every session end until the operator learns to
+#                      ignore warnings — destroying the signal this release adds.
+#   additionalFiles  — written FOR this repo by name. Never resolving is definitionally
+#                      a config error: a typo, or a path that moved.
+REPO_SPECIFIC=""
+
 # Merge repo-specific additional files if configured
 ADDITIONAL=$(jq -r --arg repo "$REPO_NAME" '.repoOverrides?[$repo]?.additionalFiles? // [] | .[]' "$CONFIG_FILE")
 if [[ -n "$ADDITIONAL" ]]; then
   while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
     FILE_LIST+=("$f")
+    REPO_SPECIFIC="$REPO_SPECIFIC$f
+"
   done <<< "$ADDITIONAL"
 fi
 
@@ -308,13 +382,34 @@ fi
 # that a configured path resolved to nothing backable in ANY worktree of the repo it was
 # configured for. That is never a normal state — it is a typo, a moved path, or an
 # unsupported type.
+# Scoped to repo-specific entries ONLY. A globalFile that resolves nowhere in this repo
+# is routine (plenty of repos have no CLAUDE.local.md); warning about it would fire at
+# every session end forever and train the reader to ignore warnings, which is the exact
+# alarm-fatigue outcome this release exists to prevent.
 WARNINGS=()
-if [[ ${#FILE_LIST[@]} -gt 0 ]]; then
-  for file in "${FILE_LIST[@]}"; do
+if [[ ${#CONFIG_WARNINGS[@]} -gt 0 ]]; then
+  WARNINGS=("${CONFIG_WARNINGS[@]}")
+fi
+
+if [[ -n "$REPO_SPECIFIC" ]]; then
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
     if ! printf '%s\n' "$FOUND_RELPATHS" | grep -Fxq -- "$file"; then
-      WARNINGS+=("configured entry never backed up from any worktree: $file")
+      WARNINGS+=("configured entry for '$REPO_NAME' never backed up from any worktree: $file")
     fi
-  done
+  done <<< "$REPO_SPECIFIC"
+fi
+
+# A config that resolves to no entries at all backs up nothing while looking healthy.
+# That is a silent success, and it is the failure this whole script is a reaction to.
+if [[ ${#FILE_LIST[@]} -eq 0 ]]; then
+  WARNINGS+=("config resolved ZERO entries for '$REPO_NAME' — nothing was backed up; check globalFiles and repoOverrides in $CONFIG_FILE")
+fi
+
+# Every globalFile missing everywhere is not proof of a bad config, but it is worth one
+# line: it usually means the repo is not what the operator thought it was.
+if [[ ${#FILE_LIST[@]} -gt 0 && ${#BACKED_UP_FILES[@]} -eq 0 && ${#FAILED_FILES[@]} -eq 0 ]]; then
+  WARNINGS+=("no configured entry resolved anywhere in '$REPO_NAME' — is this the repo you meant?")
 fi
 
 # --- Summary ---
@@ -333,10 +428,19 @@ if [[ ${#FAILED_FILES[@]} -gt 0 ]]; then
   EXIT_CODE=1
 fi
 
+# A dry run must never read as a successful backup. README makes --dry-run the standard
+# post-upgrade check, so this is the output seen most often, and "OK / Backed up (2)"
+# would assert bytes reached Drive when nothing was written at all.
+BACKED_LABEL="Backed up"
+if [[ "$DRY_RUN" == "true" ]]; then
+  STATUS="DRY-RUN($STATUS)"
+  BACKED_LABEL="Would back up"
+fi
+
 echo ""
 echo "backup-local-config complete: $STATUS  backed_up=${#BACKED_UP_FILES[@]} missing=${#MISSING_FILES[@]} unsupported=${#UNSUPPORTED_FILES[@]} failed=${#FAILED_FILES[@]} warnings=${#WARNINGS[@]}"
 echo ""
-echo "  Backed up (${#BACKED_UP_FILES[@]}):"
+echo "  $BACKED_LABEL (${#BACKED_UP_FILES[@]}):"
 if [[ ${#BACKED_UP_FILES[@]} -gt 0 ]]; then
   for f in "${BACKED_UP_FILES[@]}"; do echo "    $f"; done
 else

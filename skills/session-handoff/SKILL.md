@@ -56,10 +56,12 @@ This skill is used automatically:
    ```
    Replace `/path/to/repo` with the project root. If the backup fails, log the error but do not block the session handoff.
 
-   **Exit 2 is not a failure.** It means `PARTIAL`: the backup ran, but a configured
-   entry is stale — unsupported type, or never found in any worktree. Report the
-   `WARNING:` lines to the user and name the offending config entry. Only exit 1
-   (`FAILED`) means a copy actually failed.
+   **Exit 2 is not a failure.** It means `PARTIAL`: the transfer worked, but something
+   about the configuration is wrong — an unsupported entry, an entry that never resolved,
+   a stale config location, or a config that resolved zero entries. Report the `WARNING:`
+   lines and name the offending entry. Exit 1 means either a copy failed **or** a
+   pre-flight check did (no config found, rclone missing, not a git repo) — read the
+   `Error:` line before concluding which.
 
 #### Bare + worktree repos
 

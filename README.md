@@ -146,6 +146,20 @@ upgrade cloned a fresh copy without it. Backups then failed outright, or — wor
 running against a stale copy left behind at another install path. The `laptop-maintenance`
 `reports/` entry was lost that way in April 2026 and stayed lost for four months.
 
+**Then delete every other copy.** A config that loses is invisible; the script now names
+one when it finds it, and that warning is the cue to clean up:
+
+```bash
+rm -f ~/.claude/plugins/marketplaces/davidshaevel-marketplace/config/backup-config.json
+rm -f ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/*/config/backup-config.json
+```
+
+> **Expect `PARTIAL` / exit 2 on `laptop-maintenance` until directory support ships.**
+> Its `reports` entry is a directory, and directory entries are still rejected (TT-372).
+> That is deliberate: the gap is now reported loudly instead of as `Skipped — not found`,
+> so it is visible before it is fixed. It is not a regression, and it resolves in the next
+> release.
+
 ### 6. Verify the new version actually loaded
 
 Updating the files is not evidence the session picked them up. In the **new** session:
@@ -190,13 +204,30 @@ Back up gitignored files (SESSION_LOG.md, CLAUDE.local.md, .envrc, .env, etc.) t
 
 ### Configuration
 
-Copy the example config and edit it:
+The config lives in **`~/.claude/config/backup-config.json`** — outside the plugin, on
+purpose. It used to live at `config/backup-config.json` inside the plugin, which sits in
+the version-pinned cache, so every upgrade destroyed it (TT-452).
 
 ```bash
-cp config/backup-config.json.example config/backup-config.json
+mkdir -p ~/.claude/config
+cp config/backup-config.json.example ~/.claude/config/backup-config.json
+chmod 600 ~/.claude/config/backup-config.json
 ```
 
-Then edit `config/backup-config.json` (this file is gitignored since it contains repo-specific names):
+Resolution order, first hit wins: `$BACKUP_CONFIG_FILE`, then
+`${CLAUDE_CONFIG_DIR:-~/.claude}/config/backup-config.json`, then the old plugin-local
+path (which still works but warns and reports `PARTIAL`). Every run prints
+`Using config: <path>` as its first line.
+
+**Migrating from the old location:** move it, don't copy — leaving a second config behind
+means one of them is silently stale.
+
+```bash
+mv config/backup-config.json ~/.claude/config/backup-config.json
+```
+
+Then edit `~/.claude/config/backup-config.json` (gitignored wherever it lives, since it
+contains repo-specific names):
 
 ```json
 {

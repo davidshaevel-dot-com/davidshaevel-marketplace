@@ -53,8 +53,12 @@ matching exit code:
 | Exit | Token | Meaning | What to do |
 |------|-------|---------|------------|
 | 0 | `OK` | Everything configured was backed up | Report the counts |
-| 2 | `PARTIAL` | The backup ran and succeeded, but the **configuration is stale** — an entry was present-but-unsupported, or never resolved in any worktree | **Not a failure.** Surface the `WARNING:` lines verbatim and tell the user which config entry is wrong |
-| 1 | `FAILED` | A copy actually failed | Troubleshoot below |
+| 2 | `PARTIAL` | The transfer worked, but something about the **configuration** is wrong — an unsupported entry, an entry that never resolved, a stale config location, or a config that resolved zero entries | **Not a transfer failure.** Surface the `WARNING:` lines verbatim and name the config entry at fault |
+| 1 | *(none)* or `FAILED` | Either a copy failed **or a pre-flight check failed** — no config found, `backupDir` unset, rclone/jq missing, not a git repo, malformed config | **Read the `Error:` line first.** Only troubleshoot rclone if the output actually shows a `FAILED` token; otherwise the problem is configuration or environment |
+| other | — | The script crashed | Treat as a bug and report the raw output |
+
+The `DRY-RUN(...)` prefix on the token means nothing was written — never report a dry run
+as a completed backup.
 
 Then summarize:
 - How many files were backed up

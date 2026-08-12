@@ -37,6 +37,29 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export RCLONE_CONFIG_TESTLOCAL_TYPE=local
 
+# Run the script from a HERMETIC plugin root, not from the repo.
+#
+# The script's legacy config candidate is "$SCRIPT_DIR/../config/backup-config.json".
+# Running the repo copy makes that the developer's own gitignored config — so whether a
+# case passes depends on what happens to exist on this machine, and every case inherits
+# a "stale plugin-local config" warning. Copying into a throwaway plugin root gives the
+# legacy candidate a path that does not exist, which is what a clean install looks like.
+PLUGIN="$TMP/plugin"
+mkdir -p "$PLUGIN/scripts" "$PLUGIN/config"
+cp "$SCRIPT" "$PLUGIN/scripts/"
+cp "$SCRIPT_DIR/../config/backup-config.json.example" "$PLUGIN/config/" 2>/dev/null || true
+SCRIPT="$PLUGIN/scripts/backup-local-config.sh"
+
+# Fixtures must not depend on ambient global git identity, or the suite fails on a clean
+# machine or in CI.
+export GIT_AUTHOR_NAME="test" GIT_AUTHOR_EMAIL="test@example.invalid"
+export GIT_COMMITTER_NAME="test" GIT_COMMITTER_EMAIL="test@example.invalid"
+
+# Isolate from the real user config: without this, HOME's canonical config would win
+# whenever a case does not set BACKUP_CONFIG_FILE.
+export CLAUDE_CONFIG_DIR="$TMP/claude-home"
+mkdir -p "$CLAUDE_CONFIG_DIR/config"
+
 PASS=0
 FAIL=0
 CURRENT_CASE=""
@@ -79,11 +102,15 @@ assert_not_grep() {
 # means the bug is still exactly where we think it is. When TT-372 lands, every
 # documents_bug call below flips to a real assertion, and that diff IS the record of
 # what the behaviour change was.
-documents_bug() {  # $1 condition-already-evaluated (0/1), $2 issue, $3 label
+# $4 records what this assertion BECOMES once the bug is fixed, so the fixing release
+# has the target written down rather than having to infer it from a failing test.
+documents_bug() {  # $1 condition (0/1), $2 issue, $3 label, $4 becomes
   if [[ "$1" -eq 0 ]]; then
     PASS=$((PASS + 1)); echo "   ok   [documents $2] $3"
   else
-    FAIL=$((FAIL + 1)); echo "   FAIL [documents $2] $3 — behaviour changed, update this test"
+    FAIL=$((FAIL + 1))
+    echo "   FAIL [documents $2] $3"
+    echo "        behaviour changed — this test should now assert: ${4:-<not recorded>}"
   fi
 }
 
@@ -169,11 +196,14 @@ assert_exit "$RC" 0 "all entries resolved"
 # entries sharing a basename map to the same destination — the second silently
 # overwrites the first. Pinned here so the fix has to change these three lines.
 [[ -f "$DRIVE/repo-files/swap.py" && ! -e "$DRIVE/repo-files/a/x/swap.py" ]]; documents_bug $? "TT-372" \
-  "nested file flattens to the destination root"
+  "nested file flattens to the destination root" \
+  "repo-files/a/x/swap.py exists and repo-files/swap.py does not"
 [[ "$(cat "$DRIVE/repo-files/swap.py" 2>/dev/null)" == "BBB" ]]; documents_bug $? "TT-372" \
-  "same-basename file A is destroyed by B (last write wins)"
+  "same-basename file A is destroyed by B (last write wins)" \
+  "a/x/swap.py contains AAA and b/y/swap.py contains BBB"
 [[ -f "$DRIVE/repo-files/notes.md" ]]; documents_bug $? "TT-372" \
-  "path with a space flattens but is not corrupted"
+  "path with a space flattens but is not corrupted" \
+  "repo-files/my docs/notes.md exists"
 
 # ==============================================================================
 # Case 4-7: directory entries — top-level, trailing slash, nested, same-basename
@@ -292,7 +322,99 @@ RC=$(run_backup "$TMP/c-empty.json" "$R")
 
 assert_not_grep "$OUT" "unbound variable" "no unbound-variable error on empty array"
 assert_grep "$OUT" "backup-local-config complete" "script reached its summary"
-assert_exit "$RC" 0 "empty config is a clean no-op"
+# NOT exit 0. A config resolving zero entries backs up nothing, and reporting that as a
+# clean success is the silent-success failure this script is a reaction to.
+assert_grep "$OUT" "resolved ZERO entries" "zero resolved entries is called out"
+assert_exit "$RC" 2 "backing up nothing is PARTIAL, never OK"
+
+# ==============================================================================
+# Config hazards — every silent-success path must be loud
+# ==============================================================================
+start_case "config hazards: typo'd key, wrong type, malformed JSON, bad override"
+reset_drive hazard
+R="$TMP/repo-hazard"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+
+# jq's `?` cannot tell a misspelled key from an absent one.
+cat > "$TMP/c-typo.json" <<EOF
+{"backupDir":"testlocal:$DRIVE","globalfiles":["SESSION_LOG.md"],"repoOverrides":{}}
+EOF
+RC=$(run_backup "$TMP/c-typo.json" "$R")
+assert_grep "$OUT" "unrecognised key 'globalfiles'" "misspelled key is named"
+assert_grep "$OUT" "resolved ZERO entries" "and its consequence is stated"
+assert_exit "$RC" 2 "misspelled key does not report OK"
+
+cat > "$TMP/c-type.json" <<EOF
+{"backupDir":"testlocal:$DRIVE","globalFiles":"SESSION_LOG.md","repoOverrides":{}}
+EOF
+RC=$(run_backup "$TMP/c-type.json" "$R")
+assert_grep "$OUT" "must be array (found string)" "wrong-typed globalFiles rejected"
+assert_exit "$RC" 1 "wrong type fails closed"
+
+echo '{ not json' > "$TMP/c-bad.json"
+RC=$(run_backup "$TMP/c-bad.json" "$R")
+assert_grep "$OUT" "not valid JSON" "malformed config is diagnosed"
+assert_exit "$RC" 1 "malformed config exits 1, not an unclassified crash"
+
+BACKUP_CONFIG_FILE="$TMP/does-not-exist.json" "$BASH" "$SCRIPT" "$R" > "$OUT" 2>&1
+RC=$?
+assert_grep "$OUT" "is set but does not name a readable file" "bad override is fatal"
+assert_exit "$RC" 1 "bad override does not silently fall through"
+
+# ==============================================================================
+# Config precedence and the TT-452 condition
+# ==============================================================================
+start_case "config precedence: canonical beats legacy; legacy is never OK"
+reset_drive precedence
+R="$TMP/repo-prec"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+write_config "$PLUGIN/config/backup-config.json" "testlocal:$DRIVE" '["SESSION_LOG.md"]' '{}'
+write_config "$CLAUDE_CONFIG_DIR/config/backup-config.json" "testlocal:$DRIVE" '["SESSION_LOG.md"]' '{}'
+
+"$BASH" "$SCRIPT" "$R" > "$OUT" 2>&1
+RC=$?
+assert_grep "$OUT" "Using config: $CLAUDE_CONFIG_DIR/config/backup-config.json" "canonical beats legacy"
+assert_grep "$OUT" "stale plugin-local config exists and was IGNORED" "the shadowed copy is named"
+assert_exit "$RC" 2 "a stale copy left on disk is not a clean run"
+
+rm -f "$CLAUDE_CONFIG_DIR/config/backup-config.json"
+"$BASH" "$SCRIPT" "$R" > "$OUT" 2>&1
+RC=$?
+assert_grep "$OUT" "Using config: $PLUGIN/config/backup-config.json" "legacy used when canonical absent"
+assert_grep "$OUT" "the next upgrade will delete it" "TT-452 condition is stated"
+assert_exit "$RC" 2 "TT-452 condition is PARTIAL, not OK"
+rm -f "$PLUGIN/config/backup-config.json"
+
+# ==============================================================================
+# Dry run reports intent, never success
+# ==============================================================================
+start_case "dry run: never reads as a completed backup"
+reset_drive dryrun
+R="$TMP/repo-dry"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+write_config "$TMP/c-dry.json" "testlocal:$DRIVE" '["SESSION_LOG.md"]' '{}'
+BACKUP_CONFIG_FILE="$TMP/c-dry.json" "$BASH" "$SCRIPT" --dry-run "$R" > "$OUT" 2>&1
+
+assert_grep "$OUT" "DRY-RUN" "status token marks it a preview"
+assert_grep "$OUT" "Would back up" "bucket is not labelled 'Backed up'"
+assert_absent "repo-dry/SESSION_LOG.md" "dry run wrote nothing to the destination"
+
+# ==============================================================================
+# A real copy failure is FAILED, not PARTIAL
+# ==============================================================================
+start_case "copy failure: FAILED and exit 1"
+reset_drive failure
+R="$TMP/repo-fail"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+# /dev/null/x cannot be created as a directory, so the copy genuinely fails.
+write_config "$TMP/c-fail.json" "testlocal:/dev/null/x" '["SESSION_LOG.md"]' '{}'
+RC=$(run_backup "$TMP/c-fail.json" "$R")
+assert_grep "$OUT" "FAILED" "status token is FAILED"
+assert_exit "$RC" 1 "a copy failure exits 1, distinct from PARTIAL"
 
 # --- summary ------------------------------------------------------------------
 echo ""
