@@ -18,7 +18,10 @@ Back up configured gitignored files from the current repository to Google Drive 
 - `rclone` installed (`brew install rclone`)
 - `jq` installed (`brew install jq`)
 - Google Drive remote configured in rclone (`rclone config`)
-- `config/backup-config.json` configured in the plugin directory
+- A config at `~/.claude/config/backup-config.json` (NOT in the plugin directory — that
+  location is inside the version-pinned cache and does not survive an upgrade, TT-452).
+  Every run prints `Using config: <path>` as its first line; if that is not the
+  `~/.claude/config/` one, say so.
 
 ## Process
 
@@ -47,12 +50,37 @@ For a dry run (preview without uploading):
 
 ### 3. Report Results
 
-Summarize the script output to the user:
+**Read the exit code, not just the output.** The script ends with a status token and a
+matching exit code:
+
+| Exit | Token | Meaning | What to do |
+|------|-------|---------|------------|
+| 0 | `OK` | Everything configured was backed up | Report the counts |
+| 2 | `PARTIAL` | The transfer worked, but something about the **configuration** is wrong — an unsupported entry, an entry that never resolved, a stale config location, or a config that resolved zero entries | **Not a transfer failure.** Surface the `WARNING:` lines verbatim and name the config entry at fault |
+| 1 | *(none)* or `FAILED` | Either a copy failed **or a pre-flight check failed** — no config found, `backupDir` unset, rclone/jq missing, not a git repo, malformed config | **Read the `Error:` line first.** Only troubleshoot rclone if the output actually shows a `FAILED` token; otherwise the problem is configuration or environment |
+| other | — | The script crashed | Treat as a bug and report the raw output |
+
+The `DRY-RUN(...)` prefix on the token means nothing was written — never report a dry run
+as a completed backup.
+
+Then summarize:
 - How many files were backed up
-- How many were skipped (not found in the repo/worktree)
+- **Missing** (no such path) vs **Unsupported** (present but not backed up) — these are
+  different problems and the script now distinguishes them. "Missing" is often normal;
+  "Unsupported" never is
+- Any `WARNING:` lines — a configured entry that resolved to nothing backable in *any*
+  worktree is a typo, a moved path, or an unsupported type
 - Any failures and their causes
+
+A clean `Failed (0)` is **not** evidence of a good backup. That combination — no
+failures, no output anyone read — hid a broken `reports/` entry for four months. For
+anything that matters, verify the bytes:
+
+```bash
+rclone check <local-dir> <remote-dir> --one-way
+```
 
 If there are failures, suggest troubleshooting steps:
 - Check that rclone remote is configured: `rclone listremotes`
 - Check that the backup directory exists: `rclone ls gdrive:session-backups`
-- Verify file paths in `config/backup-config.json`
+- Verify file paths in the config named by the run's `Using config:` line

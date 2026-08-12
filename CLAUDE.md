@@ -145,6 +145,12 @@ jq --arg v "$V" '.plugins[0].version = $v'  .claude-plugin/marketplace.json > tm
 
 # Verify — must print the new version exactly three times and nothing else
 grep -rh '"version"' .claude-plugin/ .codex-plugin/
+
+# Test backup-local-config.sh — run under BOTH interpreters.
+# Bash 5 silently hides the empty-array case that bash 3.2 dies on, and the harness
+# runs the script under whichever bash runs the harness, so this is not ceremony.
+/bin/bash           scripts/test-backup-local-config.sh   # 3.2, stock macOS
+/usr/local/bin/bash scripts/test-backup-local-config.sh   # 5.x, Homebrew
 ```
 
 ---
@@ -171,10 +177,19 @@ grep -rh '"version"' .claude-plugin/ .codex-plugin/
 - **Not every skill is portable.** `self-hosted-review` requires subagent dispatch,
   `/code-review`, `ReportFindings` and `superpowers` — Claude Code only. The other four are
   gh/rclone/file-editing and work under both agents.
-- **Gitignored config does not survive an upgrade.** `config/backup-config.json` is absent
-  from every fresh clone, so `backup-local-config.sh` fails after an upgrade until it is
-  relinked. Use `ln -s`, not `cp` — `cp` follows the symlink and de-links the new version
-  (TT-452).
+- **The backup config lives outside the plugin, on purpose.** `backup-local-config.sh`
+  resolves it in order: `$BACKUP_CONFIG_FILE`, then
+  `${CLAUDE_CONFIG_DIR:-~/.claude}/config/backup-config.json`, then the legacy
+  plugin-local path. It used to resolve *only* the last one, which sits inside the
+  version-pinned cache — so every upgrade cloned a fresh copy without it and backups
+  either failed outright or silently ran against a stale copy left at another install
+  path. That is how `laptop-maintenance`'s `reports/` entry was lost in April 2026 and
+  stayed lost for four months (TT-452). Every run prints `Using config: <path>`; if that
+  is not the `~/.claude/config/` one, fix it before trusting the backup.
+- **`Failed (0)` is not evidence of a good backup.** The script now ends with an
+  `OK`/`PARTIAL`/`FAILED` token and exits 0/2/1. Exit 2 means the transfer worked but a
+  configured entry is stale — not a failure, but not a success either. For anything that
+  matters, check the bytes: `rclone check <local> <remote> --one-way`.
 - **Never reserve a version number in advance.** An issue owns *"the next minor"*, never a
   specific number. Whichever qualifying change ships first takes the number; everything else
   shifts. Reserving collided three times before this rule existed: TT-372 was slated for

@@ -56,6 +56,13 @@ This skill is used automatically:
    ```
    Replace `/path/to/repo` with the project root. If the backup fails, log the error but do not block the session handoff.
 
+   **Exit 2 is not a failure.** It means `PARTIAL`: the transfer worked, but something
+   about the configuration is wrong — an unsupported entry, an entry that never resolved,
+   a stale config location, or a config that resolved zero entries. Report the `WARNING:`
+   lines and name the offending entry. Exit 1 means either a copy failed **or** a
+   pre-flight check did (no config found, rclone missing, not a git repo) — read the
+   `Error:` line before concluding which.
+
 #### Bare + worktree repos
 
 1. Determine which worktree the session worked in by checking the branch used throughout the conversation
@@ -67,6 +74,8 @@ This skill is used automatically:
    "${CLAUDE_PLUGIN_ROOT}/scripts/backup-local-config.sh" /path/to/repo-root
    ```
    Replace `/path/to/repo-root` with the bare repo root (the directory containing `.bare/`). This backs up files from all worktrees in a single call. If the backup fails, log the error but do not block the session handoff.
+
+   **Exit 2 is not a failure** — see the note above. Report the `WARNING:` lines.
 
 ### Worktree Cleanup (Merging Session History)
 
