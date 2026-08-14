@@ -263,10 +263,23 @@ fi
 REPO_NAME=$(basename "$REPO_PATH")
 
 # --- Build file list ---
+
+# normalize_entry ENTRY — strip trailing slashes ("reports/" == "reports"), preserving a
+# lone "/" so it reaches the unsafe-entry check below instead of being emptied and
+# silently dropped. This is THE normalization point: entries are normalized exactly once,
+# at ingestion, so dedupe, destination construction, and the never-found roll-up all see
+# identical strings without re-implementing the rule.
+normalize_entry() {
+  local e="$1"
+  while [[ "$e" == */ && "$e" != "/" ]]; do e="${e%/}"; done
+  printf '%s' "$e"
+}
+
 # Start with global files (use while-read for Bash 3.2 compatibility)
 FILE_LIST=()
 while IFS= read -r line; do
-  [[ -n "$line" ]] && FILE_LIST+=("$line")
+  [[ -n "$line" ]] || continue
+  FILE_LIST+=("$(normalize_entry "$line")")
 done < <(jq -r '.globalFiles[]?' "$CONFIG_FILE")
 
 # Repo-specific entries are tracked separately. The never-found roll-up applies only to
@@ -284,20 +297,26 @@ ADDITIONAL=$(jq -r --arg repo "$REPO_NAME" '.repoOverrides?[$repo]?.additionalFi
 if [[ -n "$ADDITIONAL" ]]; then
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
+    f="$(normalize_entry "$f")"
     FILE_LIST+=("$f")
     REPO_SPECIFIC="$REPO_SPECIFIC$f
 "
   done <<< "$ADDITIONAL"
 fi
 
-# Deduplicate (use while-read for Bash 3.2 compatibility)
+# Deduplicate, and divert unsafe entries (use while-read for Bash 3.2 compatibility).
+# Entries are already normalized, so "reports" and "reports/" arrive here identical and
+# sort -u collapses them to one copy, one count.
 #
-# Trailing slashes are stripped BEFORE sort -u, or "reports" and "reports/" survive as
-# two entries mapping to one destination — an idempotent but double-counted copy. The
-# stripped char must be preceded by SOMETHING (\(.\)): a plain s:/*$:: reduces a
-# slash-only entry ("/") to the empty string, which the -n guard below then deletes —
-# the entry would vanish from every bucket and warning instead of being classified
-# unsafe by scan_tree.
+# The unsafe check lives HERE, not in scan_tree: it validates the CONFIG, not a path on
+# disk, so it must fire once per entry — inside scan_tree it fired once per WORKTREE,
+# duplicating identical rejection lines and inflating the unsupported count. The entry
+# string is spliced into the rclone destination (TT-372), so its domain must be
+# constrained: an absolute path or a ".." segment path-cleans into a destination OUTSIDE
+# this repo's backup namespace (a silent cross-repo overwrite), and a "." segment — "."
+# itself, "./x" — resolves to the repo root or hides it, turning a script scoped to a
+# handful of gitignored files into a whole-repo uploader (.git included). Rejected
+# conservatively even when the cleaned path would stay inside the repo.
 #
 # The emptiness guards are not defensive habit. Expanding "${arr[@]}" on an EMPTY array
 # is a fatal error under `set -u` on bash < 4.4, and /bin/bash on stock macOS is 3.2:
@@ -306,10 +325,15 @@ fi
 # It only fires when globalFiles is empty, which is why it has never been hit in
 # production — and why the test harness exercises exactly that case.
 UNIQUE_FILES=()
+UNSAFE_ENTRIES=()
 if [[ ${#FILE_LIST[@]} -gt 0 ]]; then
   while IFS= read -r line; do
-    [[ -n "$line" ]] && UNIQUE_FILES+=("$line")
-  done < <(printf '%s\n' "${FILE_LIST[@]}" | sed 's:\(.\)/*$:\1:' | sort -u)
+    [[ -n "$line" ]] || continue
+    case "/$line/" in
+      //*|*/../*|*/./*) UNSAFE_ENTRIES+=("$line") ;;
+      *)                UNIQUE_FILES+=("$line") ;;
+    esac
+  done < <(printf '%s\n' "${FILE_LIST[@]}" | sort -u)
 fi
 FILE_LIST=()
 if [[ ${#UNIQUE_FILES[@]} -gt 0 ]]; then
@@ -355,7 +379,7 @@ path_kind() {
 backup_file() {
   local src="$1"
   local dest="$2"
-  local relpath="${3%/}"   # config entries may carry a trailing slash ("reports/")
+  local relpath="$3"   # already normalized at ingestion (normalize_entry) — no slashes to strip here
   local rclone_dest
 
   if [[ -d "$src" ]]; then
@@ -379,24 +403,53 @@ backup_file() {
     fi
   fi
 
+  # Link handling differs by entry type, because intent differs:
+  #   FILE entry that is a symlink   — the operator configured that path by name; follow
+  #                                    it (--copy-links) and back up the content.
+  #   links INSIDE a directory entry — preserve them as links (--links). Following them
+  #                                    would silently upload whatever they point at,
+  #                                    including content OUTSIDE the repo (a scope/privacy
+  #                                    leak with exit 0), and a link cycle materializes
+  #                                    ~32 nested copies of the tree before rclone errors.
+  #                                    Preserved links round-trip faithfully (.rclonelink
+  #                                    on non-local remotes) and cannot leak or loop.
+  local link_flag="--copy-links"
+  if [[ -d "$src" ]]; then
+    link_flag="--links"
+    if [[ -L "$src" ]]; then
+      # A symlink ENTRY naming a directory: the operator configured this path by name,
+      # so the root link is followed — resolved here to its physical path, because
+      # --links would otherwise refuse the link as a copy root. Links INSIDE the tree
+      # remain preserved by --links.
+      src="$(cd "$src" && pwd -P)"
+    fi
+    # Fifos and sockets inside the tree are invisible to BOTH link modes: rclone skips
+    # them with a NOTICE and exit 0 — "[ok]" over a partial copy. Name them and degrade
+    # the run to PARTIAL. (-type l excluded: --links preserves symlinks faithfully.)
+    # Runs before the dry-run return so a dry-run surfaces the same warning.
+    local p
+    while IFS= read -r p; do
+      [[ -n "$p" ]] || continue
+      PARTIAL_COPY_WARNINGS+=("inside directory entry '$src': '$p' is not a regular file — rclone skipped it; this entry's copy is INCOMPLETE")
+    done < <(find "$src" ! -type f ! -type d ! -type l -print 2>/dev/null)
+  fi
+
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "  [dry-run] would copy: $src -> $rclone_dest"
     return 0
   fi
 
-  # --create-empty-src-dirs: `rclone copy` of a directory otherwise creates nothing
-  # for empty SUBdirectories in the tree. It does NOT cover an empty copy ROOT (verified
-  # against rclone's local backend), hence the explicit mkdir below.
-  # --copy-links: without it rclone SKIPS symlinks inside a copied directory with only
-  # a NOTICE and exit 0 — a silent partial copy. With it, symlinks are followed (and a
-  # dangling one is a real error → FAILED → exit 1, which is the loud outcome we want).
-  if ! rclone copy --create-empty-src-dirs --copy-links "$src" "$rclone_dest"; then
+  # --create-empty-src-dirs covers empty SUBdirectories in a copied tree only; it does
+  # NOT create an empty copy ROOT (verified against rclone's local backend) — that is
+  # what the explicit mkdir below is for. Removing either reintroduces a silent no-op.
+  if ! rclone copy --create-empty-src-dirs "$link_flag" "$src" "$rclone_dest"; then
     echo "  [FAILED] $src -> $rclone_dest" >&2
     return 1
   fi
-  # An EMPTY directory entry exits the copy with 0 having created nothing — "[ok]" over
-  # a backup that does not exist. The destination must exist for backed_up to be true;
-  # mkdir is idempotent, so it runs for every directory entry unconditionally.
+  # An EMPTY directory entry exits the copy with 0 having created nothing (the flag
+  # above does not apply to the root) — "[ok]" over a backup that does not exist. The
+  # destination must exist for backed_up to be true; mkdir is idempotent, so it runs
+  # for every directory entry unconditionally.
   if [[ -d "$src" ]] && ! rclone mkdir "$rclone_dest"; then
     echo "  [FAILED] $src -> $rclone_dest (destination mkdir)" >&2
     return 1
@@ -415,6 +468,15 @@ BACKED_UP_FILES=()
 MISSING_FILES=()       # genuinely absent — normal, e.g. no CLAUDE.local.md in a worktree
 UNSUPPORTED_FILES=()   # present but neither file nor directory — never normal
 FAILED_FILES=()
+PARTIAL_COPY_WARNINGS=()  # non-file content inside a directory entry rclone would skip
+
+# Config-level rejections recorded ONCE each (they were detected at dedupe time; running
+# the check inside scan_tree duplicated the identical line once per worktree).
+if [[ ${#UNSAFE_ENTRIES[@]} -gt 0 ]]; then
+  for f in "${UNSAFE_ENTRIES[@]}"; do
+    UNSUPPORTED_FILES+=("$f (unsafe config entry — absolute, or contains \".\" or \"..\" segments; it would escape or exceed this repo's backup namespace)")
+  done
+fi
 
 # Relative paths that resolved to something backable in at least one worktree. Bash 3.2
 # has no associative arrays, so this is a newline-delimited string queried with grep.
@@ -431,21 +493,14 @@ scan_tree() {
   local root="$1" dest="$2" file src
   [[ ${#FILE_LIST[@]} -gt 0 ]] || return 0
   for file in "${FILE_LIST[@]}"; do
-    # The entry string is spliced into the rclone destination (TT-372), so its domain
-    # must be constrained: an absolute path or any ".." segment path-cleans into a
-    # destination OUTSIDE this repo's backup namespace — a silent cross-repo overwrite,
-    # the same failure class the relpath fix exists to kill, one layer up. Rejected
-    # conservatively even when the cleaned path would stay inside the repo.
-    case "/$file/" in
-      //*|*/../*)
-        UNSUPPORTED_FILES+=("$file (unsafe config entry — absolute or contains \"..\"; its destination would escape this repo's backup namespace)")
-        continue ;;
-    esac
+    # Unsafe entries ("/", "..", ".") never reach this loop — they are diverted to
+    # UNSAFE_ENTRIES at dedupe time, once per entry rather than once per worktree.
     src="$root/$file"
     # Backable = regular file or directory, through symlinks (-f and -d dereference;
-    # rclone is invoked with --copy-links so the copy follows them the same way the
-    # classification does — without that flag a symlink entry, or one inside a copied
-    # directory, was skipped or failed AFTER being classified backable).
+    # backup_file follows a symlink ENTRY with --copy-links so the copy agrees with this
+    # classification — without that a symlink entry failed in rclone AFTER being
+    # classified backable. Links INSIDE a directory entry are preserved, not followed;
+    # see the link_flag rationale in backup_file).
     # This is TT-302's `-e` restricted to the types rclone can actually copy: a fifo,
     # socket, or broken symlink still gets classified below instead of handed to rclone
     # to fail on.
@@ -514,12 +569,17 @@ if [[ ${#CONFIG_WARNINGS[@]} -gt 0 ]]; then
   WARNINGS=("${CONFIG_WARNINGS[@]}")
 fi
 
+# A directory entry whose tree contains something rclone silently skips (fifo, socket)
+# reported "[ok]" while the copy was incomplete. The scan in backup_file names each
+# skipped path; surfacing them here degrades the run to PARTIAL instead of OK.
+if [[ ${#PARTIAL_COPY_WARNINGS[@]} -gt 0 ]]; then
+  WARNINGS+=("${PARTIAL_COPY_WARNINGS[@]}")
+fi
+
 if [[ -n "$REPO_SPECIFIC" ]]; then
   while IFS= read -r file; do
-    # Match the trailing-slash normalization applied at dedupe time, or a "reports/"
-    # config entry compared against "reports" in FOUND_RELPATHS would raise a false
-    # never-found warning for an entry that was backed up.
-    while [[ "$file" == */ && "$file" != "/" ]]; do file="${file%/}"; done
+    # REPO_SPECIFIC entries were normalized at ingestion, so they compare exactly
+    # against FOUND_RELPATHS — no re-normalization here.
     [[ -n "$file" ]] || continue
     # Here-string, not `printf | grep`. Under pipefail, grep -q exits on the first
     # match while printf is still writing; once the string exceeds the ~64KB pipe

@@ -17,17 +17,29 @@ assigned at release time (see the policy in CLAUDE.md); changes accumulate under
   are now backed up (TT-302; superseded by TT-372). Fifos, sockets, and broken
   symlinks keep their "Unsupported" classification with a stated reason.
 - `backup-local-config.sh`: config entries that are absolute paths or contain a
-  `..` segment are rejected as Unsupported instead of being spliced into a
-  destination that could escape the repo's backup namespace.
+  `.` or `..` segment are rejected as Unsupported instead of being spliced into
+  a destination that could escape the repo's backup namespace (`..`) or upload
+  the entire repository including `.git` (`.`). Validation happens once at
+  config level, so a bad entry is counted once — not once per worktree.
 - `backup-local-config.sh`: trailing-slash entries (`reports/`) are normalized
   before deduplication, so `reports` and `reports/` no longer count (and copy)
   twice. A slash-only entry (`/`) survives normalization and is rejected loudly
   instead of vanishing from every bucket.
-- `backup-local-config.sh`: rclone now runs with `--create-empty-src-dirs`
-  (an empty directory entry previously reported `[ok]` while creating nothing
-  at the destination) and `--copy-links` (symlinks inside a copied directory
-  were previously skipped with only a NOTICE and exit 0; symlink-to-file
-  entries were classified backable but then failed in rclone).
+- `backup-local-config.sh`: an empty directory entry previously reported `[ok]`
+  while creating nothing at the destination — fixed by an explicit idempotent
+  `rclone mkdir` after the copy (`--create-empty-src-dirs` is also passed, but
+  it covers empty *sub*directories only, never an empty copy root; do not
+  remove the mkdir on its account).
+- `backup-local-config.sh`: symlink handling is now explicit in both copy
+  modes. A symlink *entry* is followed (`--copy-links`) — previously it was
+  classified backable and then failed in rclone. Symlinks *inside* a directory
+  entry are preserved as links (`--links`) — previously they were silently
+  skipped (NOTICE, exit 0); following them instead would leak content from
+  outside the repo and expand link cycles.
+- `backup-local-config.sh`: fifos and sockets inside a directory entry — which
+  rclone skips with only a NOTICE and exit 0 — are now detected, named in a
+  warning, and degrade the run to PARTIAL instead of reporting `[ok]` over an
+  incomplete copy.
 - `backup-local-config.sh`: the destination parent is computed with shell
   expansion instead of `dirname(1)`, which option-parses a leading `-` and
   flattened entries like `-cache/x.md` to the destination root.

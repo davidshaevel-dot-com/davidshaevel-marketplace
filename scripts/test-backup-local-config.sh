@@ -90,6 +90,10 @@ assert_dir() {  # $1 path under drive root, $2 label — the DIRECTORY itself mu
   if [[ -d "$DRIVE/$1" ]]; then ok "$2"; else bad "$2 (no directory: $1)"; fi
 }
 
+assert_symlink() {  # $1 path under drive root, $2 label — must be a LINK, not a copy
+  if [[ -L "$DRIVE/$1" ]]; then ok "$2"; else bad "$2 (not a symlink: $1)"; fi
+}
+
 assert_content() {  # $1 path, $2 expected content, $3 label
   local actual
   actual="$(cat "$DRIVE/$1" 2>/dev/null || true)"
@@ -258,16 +262,22 @@ assert_content "repo-dirs/jobs/co-b/.work/notes.md" "wb" "same-basename director
 assert_absent "repo-dirs/.work" "no basename-collision destination is created"
 assert_absent "repo-dirs/disk-audit-2026-08-11.md" "no directory contents leaked into the root"
 assert_not_grep "$OUT" "never backed up from any worktree" "backed-up directories satisfy the roll-up"
-assert_not_grep "$OUT" "Unsupported — present but NOT backed up (3)" "directories are no longer Unsupported"
 # A backed_up count that includes an entry with NOTHING at its destination is "[ok]"
-# over a backup that does not exist. --create-empty-src-dirs makes the claim true.
+# over a backup that does not exist. The explicit `rclone mkdir` makes the claim true —
+# NOT --create-empty-src-dirs, which covers empty SUBdirectories only, never the root.
 assert_dir "repo-dirs/emptydir" "empty directory EXISTS at its destination (not a silent no-op)"
-# Without --copy-links rclone skips symlinks inside a copied directory with a NOTICE
-# and exit 0 — a silent partial copy. Followed content must be present.
-assert_content "repo-dirs/jobs/co-a/.work/latest.md" "wa" "symlink inside a directory is followed, not skipped"
-# "reports/" and "reports" are one entry: trailing slashes are stripped BEFORE dedupe,
+# Symlinks inside a copied directory were silently SKIPPED (NOTICE, exit 0 — a partial
+# copy). --links preserves them as links: nothing skipped, nothing followed out of the
+# tree. On the local test remote the link round-trips to a real symlink; its target
+# lives in the same copied tree, so the content reads through it.
+assert_symlink "repo-dirs/jobs/co-a/.work/latest.md" "symlink inside a directory is preserved as a link, not skipped"
+assert_content "repo-dirs/jobs/co-a/.work/latest.md" "wa" "preserved link resolves within the copied tree"
+# "reports/" and "reports" are one entry: trailing slashes are stripped at ingestion,
 # so the copy runs once and the count says so (5 = SESSION_LOG + reports + two .work + emptydir).
 assert_grep "$OUT" "backed_up=5 missing" "trailing-slash duplicate deduplicates to one entry"
+# Falsifiable form of "directories are no longer Unsupported": the summary must say 0.
+# (A not-grep on a hardcoded bucket count goes stale the moment the fixture grows.)
+assert_grep "$OUT" "unsupported=0 " "directories are no longer Unsupported"
 assert_exit "$RC" 0 "directory entries are a clean success"
 
 # ==============================================================================
@@ -331,7 +341,7 @@ echo "log" > "$R/SESSION_LOG.md"
 echo "outside" > "$TMP/escape-target.md"   # sibling of the repo, reachable via ..
 write_config "$TMP/c-unsafe.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-unsafe":{"additionalFiles":["../escape-target.md","/etc/hosts","a/../SESSION_LOG.md","/"]}}'
+  '{"repo-unsafe":{"additionalFiles":["../escape-target.md","/etc/hosts","a/../SESSION_LOG.md","/","./"]}}'
 RC=$(run_backup "$TMP/c-unsafe.json" "$R")
 
 assert_in_bucket "Unsupported — present but NOT backed up" "../escape-target.md" \
@@ -344,11 +354,65 @@ assert_in_bucket "Unsupported — present but NOT backed up" "a/../SESSION_LOG.m
 # entry is deleted by the dedupe -n guard and vanishes from every bucket and warning.
 assert_in_bucket "Unsupported — present but NOT backed up" "/ (unsafe config entry" \
   "slash-only entry is refused loudly, not silently dropped"
+# "./" normalizes to "." — the repo root. Backing that up copies the ENTIRE repo,
+# .git included, through a script scoped to a handful of gitignored files.
+assert_in_bucket "Unsupported — present but NOT backed up" ". (unsafe config entry" \
+  "repo-root entry is refused, not uploaded wholesale"
+assert_absent "repo-unsafe/.git" "the repository itself was not uploaded"
+# One rejection line per unsafe entry: 5 entries, unsupported=5 exactly.
+assert_grep "$OUT" "unsupported=5 " "each unsafe entry is counted exactly once"
 assert_grep "$OUT" "unsafe config entry" "the reason names the basis for refusal"
 assert_absent "escape-target.md" "nothing landed OUTSIDE the repo's backup namespace"
 assert_file "repo-unsafe/SESSION_LOG.md" "safe entries still back up alongside refusals"
 assert_grep "$OUT" "PARTIAL" "unsafe entries degrade status loudly"
 assert_exit "$RC" 2 "unsafe entries exit 2, not 0"
+
+# ==============================================================================
+# Case 18: unsafe entries are validated once — config-level, not per-worktree
+# ==============================================================================
+start_case "unsafe entries: one rejection per entry across worktrees"
+reset_drive unsafe-bare
+R="$TMP/repo-unsafe-bare"
+mk_bare_worktree_repo "$R"
+echo "m" > "$R/main/SESSION_LOG.md"
+echo "f" > "$R/feature/SESSION_LOG.md"
+write_config "$TMP/c-unsafe-bare.json" "testlocal:$DRIVE" \
+  '["SESSION_LOG.md"]' \
+  '{"repo-unsafe-bare":{"additionalFiles":["../oops.md"]}}'
+RC=$(run_backup "$TMP/c-unsafe-bare.json" "$R")
+
+# The guard validates the CONFIG, not a path on disk. Inside scan_tree it fired once
+# per WORKTREE — identical lines, inflated count. It must count entries, not scans.
+assert_grep "$OUT" "unsupported=1 " "config-level rejection is counted once, not per worktree"
+assert_exit "$RC" 2 "unsafe entry degrades status in bare+worktree repos too"
+
+# ==============================================================================
+# Case 19: content inside a directory entry that rclone cannot copy
+# ==============================================================================
+start_case "directory entries: fifo degrades to PARTIAL, out-of-tree symlink stays a link"
+reset_drive fifodir
+R="$TMP/repo-fifodir"
+mk_standard_repo "$R"
+mkdir -p "$R/box"
+echo "x" > "$R/box/keep.md"
+mkfifo "$R/box/apipe"                          # rclone skips fifos with a NOTICE, exit 0
+echo "SECRET" > "$TMP/outside-secret.md"
+ln -s "$TMP/outside-secret.md" "$R/box/leak.md"  # points OUTSIDE the repo
+write_config "$TMP/c-fifodir.json" "testlocal:$DRIVE" \
+  '[]' \
+  '{"repo-fifodir":{"additionalFiles":["box"]}}'
+RC=$(run_backup "$TMP/c-fifodir.json" "$R")
+
+assert_content "repo-fifodir/box/keep.md" "x" "regular members of the directory still copy"
+# A fifo is invisible to rclone (NOTICE + exit 0): without the scan this run reports
+# "[ok]"/OK over an incomplete copy. The skipped path must be NAMED and the run PARTIAL.
+assert_grep "$OUT" "rclone skipped it" "skipped non-file member is named in a warning"
+assert_grep "$OUT" "PARTIAL" "incomplete directory copy degrades status"
+assert_exit "$RC" 2 "incomplete directory copy exits 2"
+# --links preserves the symlink instead of following it: following would upload
+# content from OUTSIDE the repo (scope/privacy leak) and expand link cycles ~32 deep.
+assert_symlink "repo-fifodir/box/leak.md" "out-of-tree symlink is preserved as a link"
+assert_not_grep "$OUT" "SECRET" "out-of-tree content is not read or reported"
 
 # ==============================================================================
 # Case 11: bare+worktree — per-worktree destinations, no false warning
