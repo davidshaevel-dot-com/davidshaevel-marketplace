@@ -21,7 +21,16 @@ assigned at release time (see the policy in CLAUDE.md); changes accumulate under
   destination that could escape the repo's backup namespace.
 - `backup-local-config.sh`: trailing-slash entries (`reports/`) are normalized
   before deduplication, so `reports` and `reports/` no longer count (and copy)
-  twice.
+  twice. A slash-only entry (`/`) survives normalization and is rejected loudly
+  instead of vanishing from every bucket.
+- `backup-local-config.sh`: rclone now runs with `--create-empty-src-dirs`
+  (an empty directory entry previously reported `[ok]` while creating nothing
+  at the destination) and `--copy-links` (symlinks inside a copied directory
+  were previously skipped with only a NOTICE and exit 0; symlink-to-file
+  entries were classified backable but then failed in rclone).
+- `backup-local-config.sh`: the destination parent is computed with shell
+  expansion instead of `dirname(1)`, which option-parses a leading `-` and
+  flattened entries like `-cache/x.md` to the destination root.
 
 ### ⚠ Backwards-incompatible for existing backups (TT-372)
 

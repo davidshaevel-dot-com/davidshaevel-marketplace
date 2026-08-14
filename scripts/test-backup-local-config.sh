@@ -86,6 +86,10 @@ assert_absent() {
   if [[ -e "$DRIVE/$1" ]]; then bad "$2 (unexpectedly present: $1)"; else ok "$2"; fi
 }
 
+assert_dir() {  # $1 path under drive root, $2 label — the DIRECTORY itself must exist
+  if [[ -d "$DRIVE/$1" ]]; then ok "$2"; else bad "$2 (no directory: $1)"; fi
+}
+
 assert_content() {  # $1 path, $2 expected content, $3 label
   local actual
   actual="$(cat "$DRIVE/$1" 2>/dev/null || true)"
@@ -201,9 +205,11 @@ mkdir -p "$R/a/x" "$R/b/y" "$R/my docs"
 echo "AAA" > "$R/a/x/swap.py"
 echo "BBB" > "$R/b/y/swap.py"
 echo "spaced" > "$R/my docs/notes.md"
+mkdir -p "$R/-cache"
+echo "dash" > "$R/-cache/x.md"
 write_config "$TMP/c-files.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-files":{"additionalFiles":["a/x/swap.py","b/y/swap.py","my docs/notes.md"]}}'
+  '{"repo-files":{"additionalFiles":["a/x/swap.py","b/y/swap.py","my docs/notes.md","-cache/x.md"]}}'
 RC=$(run_backup "$TMP/c-files.json" "$R")
 
 assert_file "repo-files/SESSION_LOG.md" "top-level file keeps its place (no extra nesting)"
@@ -217,6 +223,11 @@ assert_absent "repo-files/swap.py" "nothing flattens to the destination root"
 assert_content "repo-files/a/x/swap.py" "AAA" "same-basename file A survives"
 assert_content "repo-files/b/y/swap.py" "BBB" "same-basename file B survives"
 assert_file "repo-files/my docs/notes.md" "path with a space preserves its parent"
+# dirname(1) option-parses a leading "-", emptying relparent and flattening the file to
+# the destination root — the collision class this PR fixes, resurrected via a helper.
+# relparent is computed with pure expansion instead; this entry pins that.
+assert_content "repo-files/-cache/x.md" "dash" "leading-dash component nests under its parent"
+assert_absent "repo-files/x.md" "leading-dash entry does not flatten to the root"
 
 # ==============================================================================
 # Case 4-7: directory entries — top-level, trailing slash, nested, same-basename
@@ -230,9 +241,11 @@ mkdir -p "$R/reports" "$R/jobs/co-a/.work" "$R/jobs/co-b/.work"
 echo "r1" > "$R/reports/disk-audit-2026-08-11.md"
 echo "wa" > "$R/jobs/co-a/.work/notes.md"
 echo "wb" > "$R/jobs/co-b/.work/notes.md"
+ln -s "./notes.md" "$R/jobs/co-a/.work/latest.md"   # symlink INSIDE a copied directory
+mkdir -p "$R/emptydir"                              # empty dir: must EXIST at the dest
 write_config "$TMP/c-dirs.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-dirs":{"additionalFiles":["reports/","reports","jobs/co-a/.work","jobs/co-b/.work"]}}'
+  '{"repo-dirs":{"additionalFiles":["reports/","reports","jobs/co-a/.work","jobs/co-b/.work","emptydir"]}}'
 RC=$(run_backup "$TMP/c-dirs.json" "$R")
 
 # Directory support (TT-302/TT-372): a directory entry nests under its FULL relative
@@ -246,9 +259,15 @@ assert_absent "repo-dirs/.work" "no basename-collision destination is created"
 assert_absent "repo-dirs/disk-audit-2026-08-11.md" "no directory contents leaked into the root"
 assert_not_grep "$OUT" "never backed up from any worktree" "backed-up directories satisfy the roll-up"
 assert_not_grep "$OUT" "Unsupported — present but NOT backed up (3)" "directories are no longer Unsupported"
+# A backed_up count that includes an entry with NOTHING at its destination is "[ok]"
+# over a backup that does not exist. --create-empty-src-dirs makes the claim true.
+assert_dir "repo-dirs/emptydir" "empty directory EXISTS at its destination (not a silent no-op)"
+# Without --copy-links rclone skips symlinks inside a copied directory with a NOTICE
+# and exit 0 — a silent partial copy. Followed content must be present.
+assert_content "repo-dirs/jobs/co-a/.work/latest.md" "wa" "symlink inside a directory is followed, not skipped"
 # "reports/" and "reports" are one entry: trailing slashes are stripped BEFORE dedupe,
-# so the copy runs once and the count says so (4 = SESSION_LOG + reports + two .work).
-assert_grep "$OUT" "backed_up=4 missing" "trailing-slash duplicate deduplicates to one entry"
+# so the copy runs once and the count says so (5 = SESSION_LOG + reports + two .work + emptydir).
+assert_grep "$OUT" "backed_up=5 missing" "trailing-slash duplicate deduplicates to one entry"
 assert_exit "$RC" 0 "directory entries are a clean success"
 
 # ==============================================================================
@@ -264,9 +283,10 @@ mkfifo "$R/afifo"
 ln -s "./afifo" "$R/pipe-link"                # INTACT symlink to a non-regular file
 mkdir -p "$R/realdir"; echo "rd" > "$R/realdir/inner.md"
 ln -s "./realdir" "$R/dirlink"                # intact symlink to a directory
+ln -s "./realdir/inner.md" "$R/filelink.md"   # intact symlink to a regular file
 write_config "$TMP/c-classify.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-classify":{"additionalFiles":["nope.md","dangling.md","pipe-link","dirlink"]}}'
+  '{"repo-classify":{"additionalFiles":["nope.md","dangling.md","pipe-link","dirlink","filelink.md"]}}'
 RC=$(run_backup "$TMP/c-classify.json" "$R")
 
 # Bucket-scoped: grepping the whole output would match a filename under ANY bucket, so a
@@ -276,10 +296,14 @@ assert_in_bucket "Unsupported — present but NOT backed up" "dangling.md" \
   "broken symlink is Unsupported, NOT 'no such path'"
 assert_in_bucket "Unsupported — present but NOT backed up" "pipe-link" \
   "intact symlink to a fifo is Unsupported"
-# `-d` dereferences, so a symlink to a directory is backable the same way a symlink to
-# a regular file always was — followed, and nested under the ENTRY's relpath.
+# `-d` dereferences and rclone runs with --copy-links, so a symlink to a directory is
+# backable the same way a symlink to a regular file is — followed, and nested under
+# the ENTRY's relpath. (Before --copy-links, a file-symlink entry was classified
+# backable and then FAILED in rclone — classification and copy disagreed.)
 assert_content "repo-classify/dirlink/inner.md" "rd" \
   "symlink to a directory is followed and backed up"
+assert_content "repo-classify/filelink.md" "rd" \
+  "symlink to a regular file is followed and backed up (classification and copy agree)"
 
 # The REASON must match the actual type — a wrong reason is a verdict without a basis,
 # which is the whole defect class the v1.5.1 relabelling addressed.
@@ -307,7 +331,7 @@ echo "log" > "$R/SESSION_LOG.md"
 echo "outside" > "$TMP/escape-target.md"   # sibling of the repo, reachable via ..
 write_config "$TMP/c-unsafe.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-unsafe":{"additionalFiles":["../escape-target.md","/etc/hosts","a/../SESSION_LOG.md"]}}'
+  '{"repo-unsafe":{"additionalFiles":["../escape-target.md","/etc/hosts","a/../SESSION_LOG.md","/"]}}'
 RC=$(run_backup "$TMP/c-unsafe.json" "$R")
 
 assert_in_bucket "Unsupported — present but NOT backed up" "../escape-target.md" \
@@ -316,6 +340,10 @@ assert_in_bucket "Unsupported — present but NOT backed up" "/etc/hosts" \
   "absolute-path entry is refused"
 assert_in_bucket "Unsupported — present but NOT backed up" "a/../SESSION_LOG.md" \
   "inner .. is refused conservatively"
+# Trailing-slash normalization must NOT reduce "/" to the empty string — an empty
+# entry is deleted by the dedupe -n guard and vanishes from every bucket and warning.
+assert_in_bucket "Unsupported — present but NOT backed up" "/ (unsafe config entry" \
+  "slash-only entry is refused loudly, not silently dropped"
 assert_grep "$OUT" "unsafe config entry" "the reason names the basis for refusal"
 assert_absent "escape-target.md" "nothing landed OUTSIDE the repo's backup namespace"
 assert_file "repo-unsafe/SESSION_LOG.md" "safe entries still back up alongside refusals"

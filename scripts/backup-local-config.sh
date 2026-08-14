@@ -293,7 +293,11 @@ fi
 # Deduplicate (use while-read for Bash 3.2 compatibility)
 #
 # Trailing slashes are stripped BEFORE sort -u, or "reports" and "reports/" survive as
-# two entries mapping to one destination — an idempotent but double-counted copy.
+# two entries mapping to one destination — an idempotent but double-counted copy. The
+# stripped char must be preceded by SOMETHING (\(.\)): a plain s:/*$:: reduces a
+# slash-only entry ("/") to the empty string, which the -n guard below then deletes —
+# the entry would vanish from every bucket and warning instead of being classified
+# unsafe by scan_tree.
 #
 # The emptiness guards are not defensive habit. Expanding "${arr[@]}" on an EMPTY array
 # is a fatal error under `set -u` on bash < 4.4, and /bin/bash on stock macOS is 3.2:
@@ -305,7 +309,7 @@ UNIQUE_FILES=()
 if [[ ${#FILE_LIST[@]} -gt 0 ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && UNIQUE_FILES+=("$line")
-  done < <(printf '%s\n' "${FILE_LIST[@]}" | sed 's:/*$::' | sort -u)
+  done < <(printf '%s\n' "${FILE_LIST[@]}" | sed 's:\(.\)/*$:\1:' | sort -u)
 fi
 FILE_LIST=()
 if [[ ${#UNIQUE_FILES[@]} -gt 0 ]]; then
@@ -358,7 +362,16 @@ backup_file() {
     rclone_dest="$dest/$relpath/"
   else
     local relparent
-    relparent="$(dirname "$relpath")"
+    # Pure expansion, not dirname(1): BSD dirname option-parses its argument, so an
+    # entry whose first component starts with "-" ("-cache/x.md") makes it fail,
+    # relparent goes empty, and the file flattens to the destination root — the exact
+    # TT-372 collision class, resurrected through a helper. Inputs here are already
+    # normalized (no trailing slash) and constrained (no leading "/", no "..").
+    if [[ "$relpath" == */* ]]; then
+      relparent="${relpath%/*}"
+    else
+      relparent="."
+    fi
     if [[ "$relparent" == "." ]]; then
       rclone_dest="$dest/"
     else
@@ -371,12 +384,24 @@ backup_file() {
     return 0
   fi
 
-  if rclone copy "$src" "$rclone_dest"; then
-    echo "  [ok] $src -> $rclone_dest"
-  else
+  # --create-empty-src-dirs: `rclone copy` of a directory otherwise creates nothing
+  # for empty SUBdirectories in the tree. It does NOT cover an empty copy ROOT (verified
+  # against rclone's local backend), hence the explicit mkdir below.
+  # --copy-links: without it rclone SKIPS symlinks inside a copied directory with only
+  # a NOTICE and exit 0 — a silent partial copy. With it, symlinks are followed (and a
+  # dangling one is a real error → FAILED → exit 1, which is the loud outcome we want).
+  if ! rclone copy --create-empty-src-dirs --copy-links "$src" "$rclone_dest"; then
     echo "  [FAILED] $src -> $rclone_dest" >&2
     return 1
   fi
+  # An EMPTY directory entry exits the copy with 0 having created nothing — "[ok]" over
+  # a backup that does not exist. The destination must exist for backed_up to be true;
+  # mkdir is idempotent, so it runs for every directory entry unconditionally.
+  if [[ -d "$src" ]] && ! rclone mkdir "$rclone_dest"; then
+    echo "  [FAILED] $src -> $rclone_dest (destination mkdir)" >&2
+    return 1
+  fi
+  echo "  [ok] $src -> $rclone_dest"
 }
 
 # --- Tracking arrays ---
@@ -417,7 +442,10 @@ scan_tree() {
         continue ;;
     esac
     src="$root/$file"
-    # Backable = regular file or directory, through symlinks (-f and -d dereference).
+    # Backable = regular file or directory, through symlinks (-f and -d dereference;
+    # rclone is invoked with --copy-links so the copy follows them the same way the
+    # classification does — without that flag a symlink entry, or one inside a copied
+    # directory, was skipped or failed AFTER being classified backable).
     # This is TT-302's `-e` restricted to the types rclone can actually copy: a fifo,
     # socket, or broken symlink still gets classified below instead of handed to rclone
     # to fail on.
@@ -491,7 +519,7 @@ if [[ -n "$REPO_SPECIFIC" ]]; then
     # Match the trailing-slash normalization applied at dedupe time, or a "reports/"
     # config entry compared against "reports" in FOUND_RELPATHS would raise a false
     # never-found warning for an entry that was backed up.
-    while [[ "$file" == */ ]]; do file="${file%/}"; done
+    while [[ "$file" == */ && "$file" != "/" ]]; do file="${file%/}"; done
     [[ -n "$file" ]] || continue
     # Here-string, not `printf | grep`. Under pipefail, grep -q exits on the first
     # match while printf is still writing; once the string exceeds the ~64KB pipe
