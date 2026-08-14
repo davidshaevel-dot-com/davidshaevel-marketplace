@@ -154,11 +154,16 @@ rm -f ~/.claude/plugins/marketplaces/davidshaevel-marketplace/config/backup-conf
 rm -f ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/*/config/backup-config.json
 ```
 
-> **Expect `PARTIAL` / exit 2 on `laptop-maintenance` until directory support ships.**
-> Its `reports` entry is a directory, and directory entries are still rejected (TT-372).
-> That is deliberate: the gap is now reported loudly instead of as `Skipped — not found`,
-> so it is visible before it is fixed. It is not a regression, and it resolves in the next
-> release.
+> **Directory entries are supported as of TT-372**, and every destination now carries the
+> entry's relative path — `jobs/co-a/.work` and `jobs/co-b/.work` land at distinct
+> destinations instead of colliding on their basename. This is backwards-incompatible for
+> existing backups: anything previously backed up from a nested path sits at an old
+> basename destination that no future run will update. Clean those up on Drive only after
+> **every machine** that backs up to the remote is on the new version — a machine still on
+> the old plugin recreates the basename destinations after cleanup and its stale writes
+> then look current. To find orphans, list the repo's folder (`rclone lsd <backupDir>/<repo>`)
+> and compare against the relative paths in the config; anything sitting at a bare
+> basename with a nested twin alongside it is an orphan.
 
 ### 6. Verify the new version actually loaded
 
