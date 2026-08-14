@@ -292,6 +292,9 @@ fi
 
 # Deduplicate (use while-read for Bash 3.2 compatibility)
 #
+# Trailing slashes are stripped BEFORE sort -u, or "reports" and "reports/" survive as
+# two entries mapping to one destination — an idempotent but double-counted copy.
+#
 # The emptiness guards are not defensive habit. Expanding "${arr[@]}" on an EMPTY array
 # is a fatal error under `set -u` on bash < 4.4, and /bin/bash on stock macOS is 3.2:
 #   $ /bin/bash -c 'set -euo pipefail; F=(); for f in "${F[@]}"; do :; done'
@@ -302,7 +305,7 @@ UNIQUE_FILES=()
 if [[ ${#FILE_LIST[@]} -gt 0 ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && UNIQUE_FILES+=("$line")
-  done < <(printf '%s\n' "${FILE_LIST[@]}" | sort -u)
+  done < <(printf '%s\n' "${FILE_LIST[@]}" | sed 's:/*$::' | sort -u)
 fi
 FILE_LIST=()
 if [[ ${#UNIQUE_FILES[@]} -gt 0 ]]; then
@@ -403,6 +406,16 @@ scan_tree() {
   local root="$1" dest="$2" file src
   [[ ${#FILE_LIST[@]} -gt 0 ]] || return 0
   for file in "${FILE_LIST[@]}"; do
+    # The entry string is spliced into the rclone destination (TT-372), so its domain
+    # must be constrained: an absolute path or any ".." segment path-cleans into a
+    # destination OUTSIDE this repo's backup namespace — a silent cross-repo overwrite,
+    # the same failure class the relpath fix exists to kill, one layer up. Rejected
+    # conservatively even when the cleaned path would stay inside the repo.
+    case "/$file/" in
+      //*|*/../*)
+        UNSUPPORTED_FILES+=("$file (unsafe config entry — absolute or contains \"..\"; its destination would escape this repo's backup namespace)")
+        continue ;;
+    esac
     src="$root/$file"
     # Backable = regular file or directory, through symlinks (-f and -d dereference).
     # This is TT-302's `-e` restricted to the types rclone can actually copy: a fifo,
@@ -475,6 +488,10 @@ fi
 
 if [[ -n "$REPO_SPECIFIC" ]]; then
   while IFS= read -r file; do
+    # Match the trailing-slash normalization applied at dedupe time, or a "reports/"
+    # config entry compared against "reports" in FOUND_RELPATHS would raise a false
+    # never-found warning for an entry that was backed up.
+    while [[ "$file" == */ ]]; do file="${file%/}"; done
     [[ -n "$file" ]] || continue
     # Here-string, not `printf | grep`. Under pipefail, grep -q exits on the first
     # match while printf is still writing; once the string exceeds the ~64KB pipe

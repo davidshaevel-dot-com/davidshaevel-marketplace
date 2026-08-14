@@ -158,8 +158,12 @@ rm -f ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolk
 > entry's relative path — `jobs/co-a/.work` and `jobs/co-b/.work` land at distinct
 > destinations instead of colliding on their basename. This is backwards-incompatible for
 > existing backups: anything previously backed up from a nested path sits at an old
-> basename destination that no future run will update. Clean those up on Drive once the
-> new hierarchy is populated.
+> basename destination that no future run will update. Clean those up on Drive only after
+> **every machine** that backs up to the remote is on the new version — a machine still on
+> the old plugin recreates the basename destinations after cleanup and its stale writes
+> then look current. To find orphans, list the repo's folder (`rclone lsd <backupDir>/<repo>`)
+> and compare against the relative paths in the config; anything sitting at a bare
+> basename with a nested twin alongside it is an orphan.
 
 ### 6. Verify the new version actually loaded
 

@@ -232,7 +232,7 @@ echo "wa" > "$R/jobs/co-a/.work/notes.md"
 echo "wb" > "$R/jobs/co-b/.work/notes.md"
 write_config "$TMP/c-dirs.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
-  '{"repo-dirs":{"additionalFiles":["reports/","jobs/co-a/.work","jobs/co-b/.work"]}}'
+  '{"repo-dirs":{"additionalFiles":["reports/","reports","jobs/co-a/.work","jobs/co-b/.work"]}}'
 RC=$(run_backup "$TMP/c-dirs.json" "$R")
 
 # Directory support (TT-302/TT-372): a directory entry nests under its FULL relative
@@ -246,6 +246,9 @@ assert_absent "repo-dirs/.work" "no basename-collision destination is created"
 assert_absent "repo-dirs/disk-audit-2026-08-11.md" "no directory contents leaked into the root"
 assert_not_grep "$OUT" "never backed up from any worktree" "backed-up directories satisfy the roll-up"
 assert_not_grep "$OUT" "Unsupported — present but NOT backed up (3)" "directories are no longer Unsupported"
+# "reports/" and "reports" are one entry: trailing slashes are stripped BEFORE dedupe,
+# so the copy runs once and the count says so (4 = SESSION_LOG + reports + two .work).
+assert_grep "$OUT" "backed_up=4 missing" "trailing-slash duplicate deduplicates to one entry"
 assert_exit "$RC" 0 "directory entries are a clean success"
 
 # ==============================================================================
@@ -291,6 +294,35 @@ assert_grep "$OUT" "PARTIAL" "status token is PARTIAL"
 assert_exit "$RC" 2 "stale config exits 2, not 0"
 
 # ==============================================================================
+# Case 17: unsafe entries — ".." and absolute paths cannot escape the namespace
+# ==============================================================================
+# The entry string is spliced into the destination, so "../x" would path-clean into
+# the PARENT of this repo's backup folder — a silent cross-repo overwrite. Rejection
+# is conservative: "a/../x" is refused even though its cleaned path stays inside.
+start_case "unsafe entries: .. and absolute paths refuse to escape the namespace"
+reset_drive unsafe
+R="$TMP/repo-unsafe"
+mk_standard_repo "$R"
+echo "log" > "$R/SESSION_LOG.md"
+echo "outside" > "$TMP/escape-target.md"   # sibling of the repo, reachable via ..
+write_config "$TMP/c-unsafe.json" "testlocal:$DRIVE" \
+  '["SESSION_LOG.md"]' \
+  '{"repo-unsafe":{"additionalFiles":["../escape-target.md","/etc/hosts","a/../SESSION_LOG.md"]}}'
+RC=$(run_backup "$TMP/c-unsafe.json" "$R")
+
+assert_in_bucket "Unsupported — present but NOT backed up" "../escape-target.md" \
+  "parent-escape entry is refused, not copied"
+assert_in_bucket "Unsupported — present but NOT backed up" "/etc/hosts" \
+  "absolute-path entry is refused"
+assert_in_bucket "Unsupported — present but NOT backed up" "a/../SESSION_LOG.md" \
+  "inner .. is refused conservatively"
+assert_grep "$OUT" "unsafe config entry" "the reason names the basis for refusal"
+assert_absent "escape-target.md" "nothing landed OUTSIDE the repo's backup namespace"
+assert_file "repo-unsafe/SESSION_LOG.md" "safe entries still back up alongside refusals"
+assert_grep "$OUT" "PARTIAL" "unsafe entries degrade status loudly"
+assert_exit "$RC" 2 "unsafe entries exit 2, not 0"
+
+# ==============================================================================
 # Case 11: bare+worktree — per-worktree destinations, no false warning
 # ==============================================================================
 start_case "bare+worktree: per-worktree destinations"
@@ -300,12 +332,19 @@ mk_bare_worktree_repo "$R"
 echo "m" > "$R/main/SESSION_LOG.md"
 echo "f" > "$R/feature/SESSION_LOG.md"
 echo "only-main" > "$R/main/CLAUDE.local.md"
+# Nested directory entry under the bare+worktree layout: the headline TT-372
+# criteria must hold on BOTH layouts, not be proven on standard repos only.
+mkdir -p "$R/main/jobs/co-a/.work"
+echo "bw" > "$R/main/jobs/co-a/.work/notes.md"
 write_config "$TMP/c-bare.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md","CLAUDE.local.md"]' \
-  '{}'
+  '{"repo-bare":{"additionalFiles":["jobs/co-a/.work"]}}'
 RC=$(run_backup "$TMP/c-bare.json" "$R")
 
 assert_file "repo-bare/main/SESSION_LOG.md" "main worktree file"
+assert_content "repo-bare/main/jobs/co-a/.work/notes.md" "bw" \
+  "nested directory preserves hierarchy under a worktree destination"
+assert_absent "repo-bare/main/.work" "no basename-collision destination in a worktree"
 assert_file "repo-bare/feature/SESSION_LOG.md" "feature worktree file"
 assert_content "repo-bare/feature/SESSION_LOG.md" "f" "worktrees not cross-contaminated"
 assert_grep "$OUT" "feature/CLAUDE.local.md" "absent-in-one-worktree reported as Missing"
