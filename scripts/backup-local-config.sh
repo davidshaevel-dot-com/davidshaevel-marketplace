@@ -321,17 +321,15 @@ path_exists() {
 
 # path_kind PATH → a human reason why a present path was not backed up
 #
-# "Unsupported" on its own would repeat the sin this release is fixing: a verdict
+# "Unsupported" on its own would repeat the sin the v1.5.1 relabelling fixed: a verdict
 # without its basis. Name what the thing actually is.
 #
-# Order matters. A dangling symlink must be identified BEFORE -d/-f, both of which
-# dereference and would fall through to the wrong branch; and an intact symlink must not
-# be called "broken" merely because its target is not a regular file.
+# Directories never reach here — scan_tree backs them up (TT-372). Order still matters:
+# a dangling symlink must be identified before the intact -L branch, and an intact
+# symlink must not be called "broken" merely because its target is not a regular file.
 path_kind() {
   if [[ -L "$1" && ! -e "$1" ]]; then
     echo "broken symlink — its target does not exist"
-  elif [[ -d "$1" ]]; then
-    echo "directory — directory entries are not supported yet, see TT-372"
   elif [[ -L "$1" ]]; then
     echo "symlink to something that is not a regular file"
   else
@@ -341,23 +339,39 @@ path_kind() {
 
 # --- Backup function ---
 #
-# NOTE: this still flattens. A directory's contents would land loose in the worktree
-# root, and two entries sharing a basename map to the same destination. That is TT-372,
-# and it is deliberately NOT fixed in this release — directories are rejected as
-# unsupported below, loudly, so the gap is visible before the behaviour changes.
+# The destination carries the entry's RELATIVE PATH (TT-372). It used to carry only the
+# basename — for files, nothing at all — so jobs/co-a/.work and jobs/co-b/.work both
+# landed at .work/ and the second copy silently destroyed the first. Directories nest
+# under the full relpath (rclone copies a directory's CONTENTS into the destination);
+# files nest under the relpath's parent, which for a top-level entry is "." — no extra
+# nesting, so existing top-level destinations are unchanged.
 backup_file() {
   local src="$1"
   local dest="$2"
+  local relpath="${3%/}"   # config entries may carry a trailing slash ("reports/")
+  local rclone_dest
+
+  if [[ -d "$src" ]]; then
+    rclone_dest="$dest/$relpath/"
+  else
+    local relparent
+    relparent="$(dirname "$relpath")"
+    if [[ "$relparent" == "." ]]; then
+      rclone_dest="$dest/"
+    else
+      rclone_dest="$dest/$relparent/"
+    fi
+  fi
 
   if [[ "$DRY_RUN" == "true" ]]; then
-    echo "  [dry-run] would copy: $src -> $dest"
+    echo "  [dry-run] would copy: $src -> $rclone_dest"
     return 0
   fi
 
-  if rclone copy "$src" "$dest/"; then
-    echo "  [ok] $src -> $dest"
+  if rclone copy "$src" "$rclone_dest"; then
+    echo "  [ok] $src -> $rclone_dest"
   else
-    echo "  [FAILED] $src -> $dest" >&2
+    echo "  [FAILED] $src -> $rclone_dest" >&2
     return 1
   fi
 }
@@ -390,10 +404,14 @@ scan_tree() {
   [[ ${#FILE_LIST[@]} -gt 0 ]] || return 0
   for file in "${FILE_LIST[@]}"; do
     src="$root/$file"
-    if [[ -f "$src" ]]; then
+    # Backable = regular file or directory, through symlinks (-f and -d dereference).
+    # This is TT-302's `-e` restricted to the types rclone can actually copy: a fifo,
+    # socket, or broken symlink still gets classified below instead of handed to rclone
+    # to fail on.
+    if [[ -f "$src" || -d "$src" ]]; then
       FOUND_RELPATHS="$FOUND_RELPATHS$file
 "
-      if backup_file "$src" "$dest"; then
+      if backup_file "$src" "$dest" "$file"; then
         BACKED_UP_FILES+=("$src")
       else
         FAILED_FILES+=("$src")

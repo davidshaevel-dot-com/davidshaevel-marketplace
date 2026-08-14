@@ -128,22 +128,9 @@ assert_in_bucket() {  # $1 bucket header prefix, $2 literal entry, $3 label
   fi
 }
 
-# documents_bug — pins CURRENT, KNOWN-WRONG behaviour so the release that fixes it has
-# to change this line. The assertion passing does not mean the behaviour is good; it
-# means the bug is still exactly where we think it is. When TT-372 lands, every
-# documents_bug call below flips to a real assertion, and that diff IS the record of
-# what the behaviour change was.
-# $4 records what this assertion BECOMES once the bug is fixed, so the fixing release
-# has the target written down rather than having to infer it from a failing test.
-documents_bug() {  # $1 condition (0/1), $2 issue, $3 label, $4 becomes
-  if [[ "$1" -eq 0 ]]; then
-    PASS=$((PASS + 1)); echo "   ok   [documents $2] $3"
-  else
-    FAIL=$((FAIL + 1))
-    echo "   FAIL [documents $2] $3"
-    echo "        behaviour changed — this test should now assert: ${4:-<not recorded>}"
-  fi
-}
+# documents_bug() lived here until TT-372 landed: it pinned the known-wrong flattening
+# behaviour so the fixing release had to change those lines. Every call flipped to a
+# real assertion in that release — the helper went with them.
 
 # --- fixtures -----------------------------------------------------------------
 
@@ -222,19 +209,14 @@ RC=$(run_backup "$TMP/c-files.json" "$R")
 assert_file "repo-files/SESSION_LOG.md" "top-level file keeps its place (no extra nesting)"
 assert_exit "$RC" 0 "all entries resolved"
 
-# TT-372 is NOT fixed in this release. backup_file has no relative-path component, so
-# every file lands at the destination root: nested paths lose their parent, and two
-# entries sharing a basename map to the same destination — the second silently
-# overwrites the first. Pinned here so the fix has to change these three lines.
-[[ -f "$DRIVE/repo-files/swap.py" && ! -e "$DRIVE/repo-files/a/x/swap.py" ]]; documents_bug $? "TT-372" \
-  "nested file flattens to the destination root" \
-  "repo-files/a/x/swap.py exists and repo-files/swap.py does not"
-[[ "$(cat "$DRIVE/repo-files/swap.py" 2>/dev/null)" == "BBB" ]]; documents_bug $? "TT-372" \
-  "same-basename file A is destroyed by B (last write wins)" \
-  "a/x/swap.py contains AAA and b/y/swap.py contains BBB"
-[[ -f "$DRIVE/repo-files/notes.md" ]]; documents_bug $? "TT-372" \
-  "path with a space flattens but is not corrupted" \
-  "repo-files/my docs/notes.md exists"
+# TT-372: a file entry nests under its parent directory, so entries sharing a basename
+# keep distinct destinations. These three assertions replaced the documents_bug() calls
+# that pinned the old flattening behaviour — this diff IS the behaviour-change record.
+assert_file "repo-files/a/x/swap.py" "nested file preserves its parent path"
+assert_absent "repo-files/swap.py" "nothing flattens to the destination root"
+assert_content "repo-files/a/x/swap.py" "AAA" "same-basename file A survives"
+assert_content "repo-files/b/y/swap.py" "BBB" "same-basename file B survives"
+assert_file "repo-files/my docs/notes.md" "path with a space preserves its parent"
 
 # ==============================================================================
 # Case 4-7: directory entries — top-level, trailing slash, nested, same-basename
@@ -253,17 +235,18 @@ write_config "$TMP/c-dirs.json" "testlocal:$DRIVE" \
   '{"repo-dirs":{"additionalFiles":["reports/","jobs/co-a/.work","jobs/co-b/.work"]}}'
 RC=$(run_backup "$TMP/c-dirs.json" "$R")
 
-# Directory support is TT-302/TT-372, deliberately not in this release. What this
-# release guarantees is that a directory entry is now IMPOSSIBLE TO MISS: it is never
-# copied, never mislabelled "not found", and it forces a non-zero exit.
-assert_grep "$OUT" "Unsupported — present but NOT backed up" "directory lands in the Unsupported bucket"
-assert_grep "$OUT" "directory entries are not supported yet" "the reason names the actual type"
-assert_grep "$OUT" "TT-372" "the reason points at the tracking issue"
-assert_not_grep "$OUT" "Missing — no such path (3)" "an existing directory is NOT called missing"
-assert_grep "$OUT" "never backed up from any worktree: reports/" "never-found roll-up catches it"
+# Directory support (TT-302/TT-372): a directory entry nests under its FULL relative
+# path, so two directories sharing a basename land at distinct destinations instead of
+# the second silently destroying the first. `rclone copy dir dest/` copies dir's
+# CONTENTS into dest/, which is why the destination must carry the relpath itself.
+assert_file "repo-dirs/reports/disk-audit-2026-08-11.md" "trailing-slash directory nests under its relpath"
+assert_content "repo-dirs/jobs/co-a/.work/notes.md" "wa" "same-basename directory A keeps its hierarchy"
+assert_content "repo-dirs/jobs/co-b/.work/notes.md" "wb" "same-basename directory B keeps its hierarchy"
+assert_absent "repo-dirs/.work" "no basename-collision destination is created"
 assert_absent "repo-dirs/disk-audit-2026-08-11.md" "no directory contents leaked into the root"
-assert_absent "repo-dirs/reports" "directory not copied at all"
-assert_exit "$RC" 2 "directory entry forces PARTIAL, not a silent success"
+assert_not_grep "$OUT" "never backed up from any worktree" "backed-up directories satisfy the roll-up"
+assert_not_grep "$OUT" "Unsupported — present but NOT backed up (3)" "directories are no longer Unsupported"
+assert_exit "$RC" 0 "directory entries are a clean success"
 
 # ==============================================================================
 # Case 8-10: missing vs unsupported vs never-found
@@ -276,7 +259,7 @@ echo "log" > "$R/SESSION_LOG.md"
 ln -s "./does-not-exist" "$R/dangling.md"     # broken symlink: lstat succeeds, stat fails
 mkfifo "$R/afifo"
 ln -s "./afifo" "$R/pipe-link"                # INTACT symlink to a non-regular file
-mkdir -p "$R/realdir"
+mkdir -p "$R/realdir"; echo "rd" > "$R/realdir/inner.md"
 ln -s "./realdir" "$R/dirlink"                # intact symlink to a directory
 write_config "$TMP/c-classify.json" "testlocal:$DRIVE" \
   '["SESSION_LOG.md"]' \
@@ -290,17 +273,17 @@ assert_in_bucket "Unsupported — present but NOT backed up" "dangling.md" \
   "broken symlink is Unsupported, NOT 'no such path'"
 assert_in_bucket "Unsupported — present but NOT backed up" "pipe-link" \
   "intact symlink to a fifo is Unsupported"
-assert_in_bucket "Unsupported — present but NOT backed up" "dirlink" \
-  "symlink to a directory is Unsupported"
+# `-d` dereferences, so a symlink to a directory is backable the same way a symlink to
+# a regular file always was — followed, and nested under the ENTRY's relpath.
+assert_content "repo-classify/dirlink/inner.md" "rd" \
+  "symlink to a directory is followed and backed up"
 
 # The REASON must match the actual type — a wrong reason is a verdict without a basis,
-# which is the whole defect class this release addresses.
+# which is the whole defect class the v1.5.1 relabelling addressed.
 assert_grep "$OUT" "dangling.md (broken symlink — its target does not exist)" \
   "broken symlink's reason is accurate"
 assert_grep "$OUT" "pipe-link (symlink to something that is not a regular file)" \
   "intact symlink is NOT called broken"
-assert_grep "$OUT" "dirlink (directory — directory entries are not supported yet" \
-  "symlink-to-directory reads as a directory"
 
 assert_not_grep "$OUT" "Skipped — not found" "the old misleading label is gone"
 assert_grep "$OUT" "never backed up from any worktree" "never-found roll-up fired"
@@ -480,22 +463,24 @@ reset_drive unsuponly
 R="$TMP/repo-unsuponly"
 mk_standard_repo "$R"
 echo "log" > "$R/SESSION_LOG.md"
-mkdir -p "$R/reports"; echo "r" > "$R/reports/a.md"
+# Directories became backable in TT-372, so the unsupported fixture is now a fifo —
+# still present, still never backable, still outside the roll-up's repoOverrides scope.
+mkfifo "$R/afifo"
 write_config "$TMP/c-unsuponly.json" "testlocal:$DRIVE" \
-  '["SESSION_LOG.md","reports"]' \
+  '["SESSION_LOG.md","afifo"]' \
   '{}'
 RC=$(run_backup "$TMP/c-unsuponly.json" "$R")
 
 assert_grep "$OUT" "warnings=0" "no roll-up warning fires (globalFiles are out of its scope)"
-assert_in_bucket "Unsupported — present but NOT backed up" "reports" "the directory is Unsupported"
+assert_in_bucket "Unsupported — present but NOT backed up" "afifo" "the fifo is Unsupported"
 assert_grep "$OUT" "PARTIAL" "an unsupported entry alone is enough for PARTIAL"
 assert_exit "$RC" 2 "and enough for exit 2"
 # The "wrong repo?" guard only fires when NOTHING was backed up, so a fixture that also
 # backs up a file cannot test it — that crutch let the guard's UNSUPPORTED_FILES term
-# survive deliberate deletion. Configure ONLY the unsupported directory: backed_up=0,
-# failed=0, unsupported=1, which is exactly the laptop-maintenance/reports shape.
+# survive deliberate deletion. Configure ONLY the unsupported entry: backed_up=0,
+# failed=0, unsupported=1 — the shape laptop-maintenance/reports had before TT-372.
 reset_drive unsuponly2
-write_config "$TMP/c-unsuponly2.json" "testlocal:$DRIVE" '["reports"]' '{}'
+write_config "$TMP/c-unsuponly2.json" "testlocal:$DRIVE" '["afifo"]' '{}'
 RC=$(run_backup "$TMP/c-unsuponly2.json" "$R")
 
 assert_grep "$OUT" "backed_up=0" "nothing was backed up"
