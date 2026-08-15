@@ -266,7 +266,25 @@ git worktree remove <worktree-folder-name>
 2. Update issue description as information evolves
 3. Add comments for major milestones
 4. Link related issues (blockers, related work)
-5. Mark "Done" when phase complete
+5. Move to Done **explicitly**, only after verifying the acceptance criteria (see Done policy below)
+
+### Done Policy — Explicit Closure Only
+
+Done is a **verified** state, not an automated one:
+
+- **Done is set explicitly, only when the issue's acceptance criteria are verified** —
+  by David, or by an agent with David's approval (e.g., the mission-control
+  orchestrator's rollup).
+- **Never by PR-merge automation.** Multi-PR issues stay open until the closing
+  criteria are met — a merged PR is progress, not closure.
+- **The branch prefix records provenance** (`claude/<issue-id>-...`) and intentionally
+  links follow-up PRs to their issue; linking must not imply closure.
+
+**Why:** on 2026-08-14, Linear's GitHub "PR merged → Done" automation falsely closed
+TT-476 four times (and TT-477 for ~21 hours) — it assumes issue↔PR is 1:1, while the
+branch-naming convention links every follow-up PR to the same issue, so any merge
+closed it. Accordingly, Team Tacocat's per-team "On merge" automation is set to
+**No action** as of 2026-08-14; "On PR open → In Progress" remains enabled.
 
 ### Formatting (Issues, Projects, Initiatives)
 

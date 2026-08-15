@@ -4,6 +4,19 @@ Notable changes to the davidshaevel-claude-toolkit plugin. Version numbers are
 assigned at release time (see the policy in CLAUDE.md); changes accumulate under
 **Unreleased** until a release folds them into a numbered section.
 
+## Unreleased
+
+### Changed
+
+- `conventions/development-standards.md`: Linear Conventions now carry an explicit
+  Done policy (TT-478) — Done is set only when acceptance criteria are verified
+  (by David, or by an agent with David's approval), never by PR-merge automation;
+  multi-PR issues stay open until closing criteria are met, and branch-prefix
+  linking of follow-up PRs must not imply closure. Documents that Team Tacocat's
+  Linear "On merge" automation is set to No action as of 2026-08-14 after it
+  falsely closed TT-476/TT-477 ("On PR open → In Progress" remains enabled).
+  Convention text change → next release is at least a MINOR bump per policy.
+
 ## 1.6.0 — 2026-08-14
 
 ### Fixed
