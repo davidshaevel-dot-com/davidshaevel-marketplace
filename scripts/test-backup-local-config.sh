@@ -3,7 +3,7 @@
 #
 # Run under BOTH interpreters. Bash 5 hides the empty-array case that bash 3.2 fails on:
 #   /bin/bash            scripts/test-backup-local-config.sh   # 3.2 on stock macOS
-#   /usr/local/bin/bash  scripts/test-backup-local-config.sh   # 5.x from Homebrew
+#   "$(brew --prefix)"/bin/bash  scripts/test-backup-local-config.sh   # 5.x from Homebrew
 #
 # These are REAL copies, not dry-run assertions. `RCLONE_CONFIG_TESTLOCAL_TYPE=local`
 # defines an rclone remote via environment variable, so `backupDir: "testlocal:/tmp/..."`

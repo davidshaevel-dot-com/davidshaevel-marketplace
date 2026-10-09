@@ -242,7 +242,7 @@ git worktree remove <worktree-folder-name>
 # NEVER use cp for gitignored files — always MERGE
 # Use the session-handoff skill's "Worktree Cleanup" sections to merge:
 #   - .envrc: line-by-line comparison
-#   - CLAUDE.local.md: section-by-section comparison
+#   - AGENTS.local.md (or legacy CLAUDE.local.md): section-by-section comparison
 #   - SESSION_LOG.md: interleave session history entries by date
 ```
 
@@ -251,7 +251,7 @@ git worktree remove <worktree-folder-name>
 2. Pull changes into main worktree: `cd main && git pull`
 3. Delete remote branch: `git push origin --delete <branch-name>`
 4. **Merge** worktree's `.envrc` into main's `.envrc` (see `session-handoff` skill — Worktree Cleanup section)
-5. **Merge** worktree's `CLAUDE.local.md` into main's `CLAUDE.local.md` (see `session-handoff` skill — Worktree Cleanup section)
+5. **Merge** worktree's `AGENTS.local.md` (or legacy `CLAUDE.local.md`) into main's, under the name main uses (see `session-handoff` skill — Worktree Cleanup section)
 6. **Merge** worktree's `SESSION_LOG.md` into main's `SESSION_LOG.md` (see `session-handoff` skill — Worktree Cleanup section)
 7. Remove the worktree: `git worktree remove <worktree-name>`
 
@@ -339,6 +339,6 @@ closed it. Accordingly, Team Tacocat's per-team "On merge" automation is set to
 - **Always use feature branches** named `claude/<issue>-<description>` or `david/<issue>-<description>`
 - **Conventional Commits** with `related-issues: TT-XXX`
 - **Squash and merge** for all PRs
-- **Never commit sensitive data** (use .envrc, CLAUDE.local.md — both gitignored)
+- **Never commit sensitive data** (use .envrc, AGENTS.local.md (or legacy CLAUDE.local.md) — all gitignored)
 - **Use superpowers skills** when they apply (1% chance = invoke)
 - **Document decisions** in session notes / SESSION_LOG.md

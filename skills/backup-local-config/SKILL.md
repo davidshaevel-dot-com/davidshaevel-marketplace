@@ -1,6 +1,6 @@
 ---
 name: backup-local-config
-description: Back up gitignored local files (SESSION_LOG.md, CLAUDE.local.md, .envrc, etc.) to Google Drive via rclone
+description: Back up gitignored local files (SESSION_LOG.md, AGENTS.local.md (or legacy CLAUDE.local.md), .envrc, etc.) to Google Drive via rclone
 ---
 
 # Backup Local Config
