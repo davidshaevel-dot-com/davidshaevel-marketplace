@@ -1,5 +1,7 @@
 # Agent context files (sensitive/local)
+AGENTS.local.md
 CLAUDE.local.md
+*.local.md
 SESSION_LOG.md
 
 # Backup config (contains repo-specific names)

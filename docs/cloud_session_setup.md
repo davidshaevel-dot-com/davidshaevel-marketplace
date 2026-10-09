@@ -272,7 +272,7 @@ Anything not committed to git or backed up to `gdrive:` is lost when the contain
 
 - `~/.gstack/` — all gstack config (telemetry, proactive, routing_declined markers, session timeline)
 - `.envrc` (gitignored)
-- `CLAUDE.local.md` (gitignored)
+- `AGENTS.local.md`, or legacy `CLAUDE.local.md` in an unmigrated repo (gitignored)
 - `SESSION_LOG.md` (gitignored — but currently ONLY backed up at session end via `session-handoff`; not restored at start — see Gap 2)
 - `/tmp/` contents
 

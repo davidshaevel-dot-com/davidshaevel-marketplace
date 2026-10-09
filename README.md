@@ -45,7 +45,7 @@ Both blockers are tracked in **[TT-393 — Codex remote git-source marketplace i
 | `self-hosted-review` | Produce a review with subagents when **no bot reviewer responded** — three cycles (architectural, line-level, verification) |
 | `session-handoff` | Read/write SESSION_LOG.md for cross-agent memory persistence |
 | `backup-local-config` | Back up gitignored local files to Google Drive via rclone |
-| `bootstrap-project` | Initialize new projects with CLAUDE.md, .cursorrules, CLAUDE.local.md, SESSION_LOG.md |
+| `bootstrap-project` | Initialize new projects with AGENTS.md, CLAUDE.md (import), .cursorrules, AGENTS.local.md, SESSION_LOG.md |
 
 ### Which review skill?
 
@@ -180,7 +180,7 @@ session is still on the old registry — restart again rather than assuming it w
 
 ## Backup Local Config
 
-Back up gitignored files (SESSION_LOG.md, CLAUDE.local.md, .envrc, .env, etc.) to Google Drive. Runs automatically at session end via session-handoff, or on-demand.
+Back up gitignored files (SESSION_LOG.md, AGENTS.local.md (or legacy CLAUDE.local.md), .envrc, .env, etc.) to Google Drive. Runs automatically at session end via session-handoff, or on-demand.
 
 ### Prerequisites
 
@@ -239,7 +239,8 @@ contains repo-specific names):
   "backupDir": "gdrive:session-backups",
   "globalFiles": [
     "SESSION_LOG.md",
-    "CLAUDE.local.md"
+    "CLAUDE.local.md",
+    "AGENTS.local.md"
   ],
   "repoOverrides": {
     "my-project": {
@@ -299,7 +300,7 @@ session-backups/
 ├── my-web-app/
 │   ├── main/
 │   │   ├── SESSION_LOG.md
-│   │   └── CLAUDE.local.md
+│   │   └── AGENTS.local.md
 │   ├── feature-auth/
 │   │   └── ...
 │   └── feature-payments/
@@ -307,13 +308,13 @@ session-backups/
 ├── my-infra-platform/
 │   ├── main/
 │   │   ├── SESSION_LOG.md
-│   │   ├── CLAUDE.local.md
+│   │   ├── AGENTS.local.md
 │   │   ├── .envrc
 │   │   └── .env
 │   └── ...
 └── my-cli-tool/
     ├── SESSION_LOG.md
-    └── CLAUDE.local.md
+    └── AGENTS.local.md
 ```
 
 - **Bare+worktree repos:** `<repo-name>/<worktree-name>/<file>`

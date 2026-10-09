@@ -2,7 +2,8 @@
   "backupDir": "gdrive:session-backups",
   "globalFiles": [
     "SESSION_LOG.md",
-    "CLAUDE.local.md"
+    "CLAUDE.local.md",
+    "AGENTS.local.md"
   ],
   "repoOverrides": {
     "my-project": {
