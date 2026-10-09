@@ -4,6 +4,23 @@ Notable changes to the davidshaevel-agent-toolkit plugin. Version numbers are
 assigned at release time (see the policy in AGENTS.md); changes accumulate under
 **Unreleased** until a release folds them into a numbered section.
 
+## 2.0.0 — 2026-10-09
+
+### Changed (breaking)
+
+- Plugin renamed `davidshaevel-claude-toolkit` → `davidshaevel-agent-toolkit`
+  (TT-553). Every namespaced skill and command id changes, as does the cache
+  path (`~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/`).
+  Repository, marketplace name and GitHub URL are unchanged. No alias for the
+  old id: uninstall it and install the new one.
+- AGENTS.md layout: context in `AGENTS.md`, `CLAUDE.md` is `@AGENTS.md`, private
+  context in `AGENTS.local.md`. `bootstrap-project` and `templates/` generate it;
+  `CLAUDE.local.md.template`/`.example` become `AGENTS.local.md.*`.
+  `session-handoff`, `backup-local-config` and the conventions treat
+  `AGENTS.local.md` as primary, `CLAUDE.local.md` as legacy.
+
+MAJOR: renaming the plugin renames every skill and command.
+
 ## 1.7.0 — 2026-08-14
 
 ### Changed
