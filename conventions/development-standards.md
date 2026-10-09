@@ -1,6 +1,6 @@
 # Development Standards
 
-These conventions apply to all projects by David Shaevel. They are injected automatically via the davidshaevel-claude-toolkit plugin session-start hook.
+These conventions apply to all projects by David Shaevel. They are injected automatically via the davidshaevel-agent-toolkit plugin session-start hook.
 
 ---
 

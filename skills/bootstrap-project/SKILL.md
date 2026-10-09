@@ -37,7 +37,7 @@ Create `CLAUDE.md` from the project template. Fill in the project-specific secti
 - Environment Variables (table of required vars)
 - References (docs links, Linear project URL)
 
-**What NOT to include:** Git workflow, commit format, PR process, code review handling, worktree conventions — these are injected by the davidshaevel-claude-toolkit plugin automatically.
+**What NOT to include:** Git workflow, commit format, PR process, code review handling, worktree conventions — these are injected by the davidshaevel-agent-toolkit plugin automatically.
 
 ### 3. Generate .cursorrules
 

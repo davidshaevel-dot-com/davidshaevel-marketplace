@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to the davidshaevel-claude-toolkit plugin. Version numbers are
+Notable changes to the davidshaevel-agent-toolkit plugin. Version numbers are
 assigned at release time (see the policy in CLAUDE.md); changes accumulate under
 **Unreleased** until a release folds them into a numbered section.
 

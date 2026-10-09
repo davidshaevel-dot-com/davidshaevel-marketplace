@@ -6,7 +6,7 @@
 
 Personal multi-agent development plugin providing development conventions, skills, and project templates. It standardizes development workflows across all of David Shaevel's projects by injecting conventions at session start, providing reusable skills, and offering project bootstrapping templates.
 
-**As of v1.4.0, the plugin supports both Claude Code and OpenAI Codex CLI.** The same `hooks/hooks.json`, `conventions/development-standards.md`, and `skills/` serve both agents — Claude Code loads them via `.claude-plugin/plugin.json`, Codex via `.codex-plugin/plugin.json`. The plugin `name` remains `davidshaevel-claude-toolkit` for install-command and marketplace-registration stability; a vendor-neutral rename is a future v2.0.0 consideration.
+**As of v1.4.0, the plugin supports both Claude Code and OpenAI Codex CLI.** The same `hooks/hooks.json`, `conventions/development-standards.md`, and `skills/` serve both agents — Claude Code loads them via `.claude-plugin/plugin.json`, Codex via `.codex-plugin/plugin.json`. The plugin `name` is `davidshaevel-agent-toolkit` (v2.0.0+).
 
 **Key Technologies:**
 - **Languages:** Shell (Bash/Zsh), Markdown

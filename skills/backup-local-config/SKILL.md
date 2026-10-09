@@ -10,7 +10,7 @@ Back up configured gitignored files from the current repository to Google Drive 
 ## Usage
 
 ```
-/davidshaevel-claude-toolkit:backup-local-config
+/davidshaevel-agent-toolkit:backup-local-config
 ```
 
 ## Prerequisites
