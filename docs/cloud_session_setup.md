@@ -150,7 +150,7 @@ Then Claude/you read it and pick up context.
 |---|---|---|
 | `gstack` (base install at `~/.claude/skills/gstack`) | — | Browse binary works with `CONTAINER=1` |
 | `superpowers@superpowers-dev` | 5.0.7 | Skills like `brainstorming`, `test-driven-development`, `systematic-debugging` available |
-| `davidshaevel-agent-toolkit@davidshaevel-marketplace` | 1.3.1 | `backup-local-config`, `bootstrap-project`, `resolve-code-review`, `session-handoff` |
+| `davidshaevel-claude-toolkit@davidshaevel-marketplace` (renamed `davidshaevel-agent-toolkit` in v2.0.0) | 1.3.1 | `backup-local-config`, `bootstrap-project`, `resolve-code-review`, `session-handoff` |
 
 ---
 

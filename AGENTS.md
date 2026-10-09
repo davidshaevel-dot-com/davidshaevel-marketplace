@@ -30,7 +30,7 @@ Plugin Load Flow (both agents share hooks/, conventions/, skills/):
     → Skills and commands available for the session
 ```
 
-Both manifests point at the same `skills/` directory and the same `hooks/hooks.json`. The hook output contract (JSON with `hookSpecificOutput.additionalContext`) is identical across agents, so `session-start.sh` is unchanged.
+Both manifests point at the same `skills/` directory and the same `hooks/hooks.json`. The hook output contract (JSON with `hookSpecificOutput.additionalContext`) is identical across agents and unchanged, so one `session-start.sh` serves both.
 
 ---
 
