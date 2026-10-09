@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook for davidshaevel-claude-toolkit plugin
+# SessionStart hook for davidshaevel-agent-toolkit plugin
 
 set -euo pipefail
 
@@ -36,7 +36,7 @@ cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "<IMPORTANT>\nYour development conventions are provided by the davidshaevel-claude-toolkit plugin.\n\n${conventions_escaped}\n</IMPORTANT>"
+    "additionalContext": "<IMPORTANT>\nYour development conventions are provided by the davidshaevel-agent-toolkit plugin.\n\n${conventions_escaped}\n</IMPORTANT>"
   }
 }
 EOF

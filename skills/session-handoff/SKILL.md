@@ -112,25 +112,27 @@ When a feature worktree is being removed after a PR merge, the worktree's `.envr
 
 **Important:** Do NOT use `cp <worktree>/.envrc main/.envrc` — main's copy may contain updates made independently while the feature worktree was active.
 
-### Worktree Cleanup (Merging CLAUDE.local.md)
+### Worktree Cleanup (Merging AGENTS.local.md)
 
-When a feature worktree is being removed after a PR merge, the worktree's `CLAUDE.local.md` must be **merged** into main's `CLAUDE.local.md` — never copied with `cp`.
+When a feature worktree is being removed after a PR merge, the worktree's private context file must be **merged** into main's — never copied with `cp`.
 
-`CLAUDE.local.md` is a structured markdown document with tables and sections. Unlike SESSION_LOG.md, it is not chronological — it requires section-by-section comparison.
+**Which file:** the private file is `AGENTS.local.md`, or legacy `CLAUDE.local.md` in an unmigrated repo. Merge into the name main uses. If the worktree's file has the other name (for example, the worktree has `AGENTS.local.md` while main still has legacy `CLAUDE.local.md`), merge its content into main's file and don't create a second name.
+
+`AGENTS.local.md` is a structured markdown document with tables and sections. Unlike SESSION_LOG.md, it is not chronological — it requires section-by-section comparison.
 
 **Merge process:**
 
-1. Read `main/CLAUDE.local.md`
-2. Read `<worktree>/CLAUDE.local.md`
+1. Read main's private file: `main/AGENTS.local.md` (or legacy `main/CLAUDE.local.md`)
+2. Read the worktree's private file: `<worktree>/AGENTS.local.md` (or legacy `<worktree>/CLAUDE.local.md`)
 3. Compare **section by section** (e.g., "Cloud Account Details", "Infrastructure Details", "Cost Summary")
 4. For each section:
    - If only one version has content (the other has placeholders like `[account ID or name]` or `...`), keep the version with real content
    - If both have the same value, keep it as-is
    - If values differ and one is clearly more recent or complete (e.g., an updated cost figure, a filled-in URL replacing a placeholder), keep the more complete/recent value
    - If values differ and neither is clearly "better", keep main's value and add a comment flagging the conflict: `<!-- MERGE CONFLICT: worktree had "value" -->`
-5. Write the merged result to `main/CLAUDE.local.md`
+5. Write the merged result to main's private file, under the name main already uses
 
-**Important:** Do NOT use `cp <worktree>/CLAUDE.local.md main/CLAUDE.local.md` — main's copy may contain updates made independently while the feature worktree was active.
+**Important:** Do NOT use `cp <worktree>/AGENTS.local.md main/AGENTS.local.md` (or the legacy `CLAUDE.local.md` equivalent) — main's copy may contain updates made independently while the feature worktree was active.
 
 ### SESSION_LOG.md Format
 
@@ -172,5 +174,5 @@ When a feature worktree is being removed after a PR merge, the worktree's `CLAUD
 - **One worktree, one SESSION_LOG.md** — each worktree maintains its own independent session log. Never read or write another worktree's SESSION_LOG.md.
 - **Branch determines the target** — at session end, the branch you worked on determines which worktree's SESSION_LOG.md to update. If you're unsure, ask the user.
 - **Bare repo root has no SESSION_LOG.md** — in bare+worktree repos, SESSION_LOG.md lives inside worktree directories (e.g., `main/SESSION_LOG.md`, `tt-154.../SESSION_LOG.md`), never at the bare repo root.
-- **Merge, never copy** — during worktree cleanup, merge all gitignored files into main: `.envrc` (line-by-line), `CLAUDE.local.md` (section-by-section), and `SESSION_LOG.md` (interleave by timestamp). Never use `cp` to overwrite.
+- **Merge, never copy** — during worktree cleanup, merge all gitignored files into main: `.envrc` (line-by-line), `AGENTS.local.md` or legacy `CLAUDE.local.md` (section-by-section, into the name main uses), and `SESSION_LOG.md` (interleave by timestamp). Never use `cp` to overwrite.
 - **When in doubt, ask** — if you cannot determine which worktree the session belongs to, ask the user rather than guessing.

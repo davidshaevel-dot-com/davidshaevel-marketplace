@@ -1,6 +1,6 @@
 # Cloud Backup Setup — Google Drive via rclone
 
-Operational guide for wiring the `davidshaevel-claude-toolkit` backup skill into Claude Code cloud sessions. Covers credential choice, encoding, and per-environment provisioning.
+Operational guide for wiring the `davidshaevel-agent-toolkit` backup skill into Claude Code cloud sessions. Covers credential choice, encoding, and per-environment provisioning.
 
 ## Context
 

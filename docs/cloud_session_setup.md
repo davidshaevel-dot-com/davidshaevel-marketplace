@@ -10,7 +10,7 @@
 
 ## TL;DR
 
-**What works in cloud:** gstack, superpowers, davidshaevel-claude-toolkit, rclone (gdrive: shared drive via service account), GitHub MCP, session-start hooks.
+**What works in cloud:** gstack, superpowers, davidshaevel-agent-toolkit, rclone (gdrive: shared drive via service account), GitHub MCP, session-start hooks.
 
 **What does not work in cloud:** Linear MCP (blocked at network egress and not loaded from `.mcp.json`), any non-allowlisted third-party SaaS domain, headed browser handoff (no display).
 
@@ -40,7 +40,7 @@ Example `.claude/settings.json` shape:
     }
   },
   "enabledPlugins": {
-    "davidshaevel-claude-toolkit@davidshaevel-marketplace": true,
+    "davidshaevel-agent-toolkit@davidshaevel-marketplace": true,
     "superpowers@superpowers-dev": true
   },
   "hooks": {
@@ -60,7 +60,7 @@ Example `.claude/settings.json` shape:
 3. SessionStart hook runs:
    - Materializes `rclone.conf` from `RCLONE_CONF_B64` environment variable
    - Prints the repo summary banner
-4. Plugins inject their conventions (davidshaevel-claude-toolkit injects development standards as `<IMPORTANT>` context; gstack skills become available under `/gstack-*` prefixes).
+4. Plugins inject their conventions (davidshaevel-agent-toolkit injects development standards as `<IMPORTANT>` context; gstack skills become available under `/gstack-*` prefixes).
 
 **Verify installation:**
 
@@ -150,7 +150,7 @@ Then Claude/you read it and pick up context.
 |---|---|---|
 | `gstack` (base install at `~/.claude/skills/gstack`) | — | Browse binary works with `CONTAINER=1` |
 | `superpowers@superpowers-dev` | 5.0.7 | Skills like `brainstorming`, `test-driven-development`, `systematic-debugging` available |
-| `davidshaevel-claude-toolkit@davidshaevel-marketplace` | 1.3.1 | `backup-local-config`, `bootstrap-project`, `resolve-code-review`, `session-handoff` |
+| `davidshaevel-claude-toolkit@davidshaevel-marketplace` (renamed `davidshaevel-agent-toolkit` in v2.0.0) | 1.3.1 | `backup-local-config`, `bootstrap-project`, `resolve-code-review`, `session-handoff` |
 
 ---
 
@@ -191,7 +191,7 @@ Then Claude/you read it and pick up context.
 
 **Observation:** gstack auto-committed `chore: add gstack skill routing rules to CLAUDE.md` (and similarly for `.gstack/` gitignore entry). Neither commit matched the davidshaevel dev standards (no `Co-Authored-By:` line with Opus model id, no `related-issues: TT-XXX`).
 
-**Recommendation:** gstack skills that auto-commit should read the project's commit conventions (e.g. from `CLAUDE.md` or a `.commitrules` file) and conform. Alternately, davidshaevel-claude-toolkit could provide a `commit-with-standards` helper that gstack skills invoke instead of raw `git commit`.
+**Recommendation:** gstack skills that auto-commit should read the project's commit conventions (e.g. from `CLAUDE.md` or a `.commitrules` file) and conform. Alternately, davidshaevel-agent-toolkit could provide a `commit-with-standards` helper that gstack skills invoke instead of raw `git commit`.
 
 ### Gap 5 — Linear MCP completely unreachable in cloud (multi-layer block)
 
@@ -272,7 +272,7 @@ Anything not committed to git or backed up to `gdrive:` is lost when the contain
 
 - `~/.gstack/` — all gstack config (telemetry, proactive, routing_declined markers, session timeline)
 - `.envrc` (gitignored)
-- `CLAUDE.local.md` (gitignored)
+- `AGENTS.local.md`, or legacy `CLAUDE.local.md` in an unmigrated repo (gitignored)
 - `SESSION_LOG.md` (gitignored — but currently ONLY backed up at session end via `session-handoff`; not restored at start — see Gap 2)
 - `/tmp/` contents
 

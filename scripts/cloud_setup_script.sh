@@ -7,7 +7,7 @@
 #   1. Clones garrytan/gstack into ~/.local/share/gstack (clean slate).
 #   2. Installs bun (prerequisite for gstack's build step).
 #   3. Runs `./setup --prefix -q` so skills register as /gstack-qa etc.
-#   4. Installs rclone (required by the davidshaevel-claude-toolkit
+#   4. Installs rclone (required by the davidshaevel-agent-toolkit
 #      backup-local-config skill to push session backups to Drive).
 #
 # What this does NOT do:
@@ -43,7 +43,7 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 [ -d "$HOME/.bun/bin" ] && export PATH="$HOME/.bun/bin:$PATH"
 
-# rclone — required by the davidshaevel-claude-toolkit backup-local-config
+# rclone — required by the davidshaevel-agent-toolkit backup-local-config
 # skill for pushing session backups to Google Drive. SessionStart materializes
 # rclone.conf from RCLONE_CONF_B64; this script installs the binary itself.
 #

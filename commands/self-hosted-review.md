@@ -2,7 +2,7 @@
 description: "Review a PR with subagents when no bot reviewer responded — three cycles (architectural, line-level, verification), each scoped to avoid duplicating the others"
 ---
 
-Invoke the davidshaevel-claude-toolkit:self-hosted-review skill and follow it exactly as presented to you.
+Invoke the davidshaevel-agent-toolkit:self-hosted-review skill and follow it exactly as presented to you.
 
 If the user named a PR number, review that PR. Otherwise detect the current branch's PR.
 

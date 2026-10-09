@@ -10,7 +10,7 @@ Personal multi-agent development plugin providing development conventions, skill
 
 The same conventions, hooks, and skills serve both agents. Claude Code loads them via `.claude-plugin/plugin.json`; Codex loads them via `.codex-plugin/plugin.json` (v1.4.0+).
 
-> **Plugin name:** the plugin identifier is `davidshaevel-claude-toolkit`. It is retained (despite "claude" in the name) for install-command and marketplace-registration stability across both agents. A vendor-neutral rename is a future v2.0.0 consideration.
+> **Name history:** v1.x shipped as `davidshaevel-claude-toolkit`; v2.0.0 renamed the plugin to `davidshaevel-agent-toolkit` (TT-553). The repository and marketplace keep the name `davidshaevel-marketplace`.
 
 ## Installation
 
@@ -21,7 +21,7 @@ The same conventions, hooks, and skills serve both agents. Claude Code loads the
 /plugin marketplace add davidshaevel-dot-com/davidshaevel-marketplace
 
 # Install the plugin
-/plugin install davidshaevel-marketplace@davidshaevel-claude-toolkit
+/plugin install davidshaevel-agent-toolkit@davidshaevel-marketplace
 ```
 
 ### Codex CLI
@@ -45,7 +45,7 @@ Both blockers are tracked in **[TT-393 — Codex remote git-source marketplace i
 | `self-hosted-review` | Produce a review with subagents when **no bot reviewer responded** — three cycles (architectural, line-level, verification) |
 | `session-handoff` | Read/write SESSION_LOG.md for cross-agent memory persistence |
 | `backup-local-config` | Back up gitignored local files to Google Drive via rclone |
-| `bootstrap-project` | Initialize new projects with CLAUDE.md, .cursorrules, CLAUDE.local.md, SESSION_LOG.md |
+| `bootstrap-project` | Initialize new projects with AGENTS.md, CLAUDE.md (import), .cursorrules, AGENTS.local.md, SESSION_LOG.md |
 
 ### Which review skill?
 
@@ -87,19 +87,19 @@ git -C ~/.claude/plugins/marketplaces/davidshaevel-marketplace pull origin main
 
 ### 2. Plugin cache
 
-The cache stores versioned clones at `~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<version>/`. Create a new directory for the new version:
+The cache stores versioned clones at `~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<version>/`. Create a new directory for the new version:
 
 ```bash
 # Clone the new version tag into the cache
 git clone --branch v<NEW_VERSION> --depth 1 \
   git@github.com:davidshaevel-dot-com/davidshaevel-marketplace.git \
-  ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<NEW_VERSION>
+  ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<NEW_VERSION>
 
 # Optionally recreate the old version directory from its tag (keeps it clean)
-rm -rf ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<OLD_VERSION>
+rm -rf ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<OLD_VERSION>
 git clone --branch v<OLD_VERSION> --depth 1 \
   git@github.com:davidshaevel-dot-com/davidshaevel-marketplace.git \
-  ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<OLD_VERSION>
+  ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<OLD_VERSION>
 ```
 
 ### 3. Installed plugins registry
@@ -127,7 +127,7 @@ file on disk is correct. Verified on 2026-08-11 upgrading 1.4.0 → 1.5.0.
 upgrade cannot take it away. Confirm that is what actually happens:
 
 ```bash
-~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<NEW_VERSION>/scripts/backup-local-config.sh \
+~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<NEW_VERSION>/scripts/backup-local-config.sh \
   --dry-run ~/workspace-ds/laptop-maintenance
 ```
 
@@ -151,7 +151,7 @@ one when it finds it, and that warning is the cue to clean up:
 
 ```bash
 rm -f ~/.claude/plugins/marketplaces/davidshaevel-marketplace/config/backup-config.json
-rm -f ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/*/config/backup-config.json
+rm -f ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/*/config/backup-config.json
 ```
 
 > **Directory entries are supported as of TT-372**, and every destination now carries the
@@ -172,7 +172,7 @@ Updating the files is not evidence the session picked them up. In the **new** se
 ```bash
 # all three locations should agree
 grep -h '"version"' ~/.claude/plugins/marketplaces/davidshaevel-marketplace/.claude-plugin/plugin.json
-ls ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/
+ls ~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/
 ```
 
 Then invoke a skill that only exists in the new version. If it returns `Unknown skill`, the
@@ -180,7 +180,7 @@ session is still on the old registry — restart again rather than assuming it w
 
 ## Backup Local Config
 
-Back up gitignored files (SESSION_LOG.md, CLAUDE.local.md, .envrc, .env, etc.) to Google Drive. Runs automatically at session end via session-handoff, or on-demand.
+Back up gitignored files (SESSION_LOG.md, AGENTS.local.md (or legacy CLAUDE.local.md), .envrc, .env, etc.) to Google Drive. Runs automatically at session end via session-handoff, or on-demand.
 
 ### Prerequisites
 
@@ -239,7 +239,8 @@ contains repo-specific names):
   "backupDir": "gdrive:session-backups",
   "globalFiles": [
     "SESSION_LOG.md",
-    "CLAUDE.local.md"
+    "CLAUDE.local.md",
+    "AGENTS.local.md"
   ],
   "repoOverrides": {
     "my-project": {
@@ -266,19 +267,19 @@ contains repo-specific names):
 
 **On-demand (from Claude Code):**
 ```
-/davidshaevel-claude-toolkit:backup-local-config
+/davidshaevel-agent-toolkit:backup-local-config
 ```
 
 **Automatic:** Runs at every session end via session-handoff.
 
 **Dry run (preview without uploading):**
 ```bash
-~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<VERSION>/scripts/backup-local-config.sh --dry-run /path/to/repo
+~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<VERSION>/scripts/backup-local-config.sh --dry-run /path/to/repo
 ```
 
 **Manual CLI (outside Claude Code):**
 ```bash
-~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-claude-toolkit/<VERSION>/scripts/backup-local-config.sh /path/to/repo
+~/.claude/plugins/cache/davidshaevel-marketplace/davidshaevel-agent-toolkit/<VERSION>/scripts/backup-local-config.sh /path/to/repo
 ```
 
 `<VERSION>` must match the installed version in `~/.claude/plugins/installed_plugins.json`.
@@ -299,7 +300,7 @@ session-backups/
 ├── my-web-app/
 │   ├── main/
 │   │   ├── SESSION_LOG.md
-│   │   └── CLAUDE.local.md
+│   │   └── AGENTS.local.md
 │   ├── feature-auth/
 │   │   └── ...
 │   └── feature-payments/
@@ -307,13 +308,13 @@ session-backups/
 ├── my-infra-platform/
 │   ├── main/
 │   │   ├── SESSION_LOG.md
-│   │   ├── CLAUDE.local.md
+│   │   ├── AGENTS.local.md
 │   │   ├── .envrc
 │   │   └── .env
 │   └── ...
 └── my-cli-tool/
     ├── SESSION_LOG.md
-    └── CLAUDE.local.md
+    └── AGENTS.local.md
 ```
 
 - **Bare+worktree repos:** `<repo-name>/<worktree-name>/<file>`
