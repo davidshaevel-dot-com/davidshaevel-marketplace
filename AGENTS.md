@@ -232,3 +232,11 @@ No environment variables required for the plugin itself. Individual projects boo
 
 - **GitHub Repository:** [davidshaevel-marketplace](https://github.com/davidshaevel-dot-com/davidshaevel-marketplace)
 - **Linear Project:** [Team Tacocat](https://linear.app/davidshaevel-dot-com)
+
+---
+
+## Private policy
+
+Operator-private rules live in `AGENTS.local.md` beside this file (gitignored).
+Harnesses with import support load it here: @AGENTS.local.md
+Otherwise: if `AGENTS.local.md` exists, read it before acting; if not, continue without it.
