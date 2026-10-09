@@ -1,6 +1,4 @@
-# davidshaevel-marketplace - Claude Context
-
-<!-- If CLAUDE.local.md exists, read it for additional context (account IDs, resource details, etc.) -->
+# davidshaevel-marketplace - Agent Context
 
 ## Project Overview
 
@@ -87,15 +85,17 @@ davidshaevel-marketplace/
 │   │   └── backup-local-config/SKILL.md # Local file backup skill
 │   │
 │   ├── templates/                     # Project templates
-│   │   ├── CLAUDE.md.template         # CLAUDE.md template
-│   │   ├── CLAUDE.local.md.template   # CLAUDE.local.md template
-│   │   ├── CLAUDE.local.md.example    # Example CLAUDE.local.md
+│   │   ├── AGENTS.md.template         # AGENTS.md template
+│   │   ├── AGENTS.local.md.template   # AGENTS.local.md template
+│   │   ├── AGENTS.local.md.example    # Example AGENTS.local.md
+│   │   ├── CLAUDE.md.template         # CLAUDE.md template (imports AGENTS.md)
 │   │   ├── SESSION_LOG.md.template    # SESSION_LOG.md template
 │   │   ├── cursorrules.template       # .cursorrules template
 │   │   └── gitignore-additions.txt    # Gitignore entries for agent files
 │   │
-│   ├── CLAUDE.md                      # Public project context (this file)
-│   ├── CLAUDE.local.md                # Sensitive project context (gitignored)
+│   ├── AGENTS.md                      # Public project context (this file)
+│   ├── CLAUDE.md                      # One line: @AGENTS.md (Claude Code import)
+│   ├── AGENTS.local.md                # Sensitive project context (gitignored)
 │   ├── SESSION_LOG.md                 # Cross-agent memory (gitignored)
 │   ├── README.md                      # Public documentation
 │   └── LICENSE                        # MIT License
@@ -149,8 +149,8 @@ grep -rh '"version"' .claude-plugin/ .codex-plugin/
 # Test backup-local-config.sh — run under BOTH interpreters.
 # Bash 5 silently hides the empty-array case that bash 3.2 dies on, and the harness
 # runs the script under whichever bash runs the harness, so this is not ceremony.
-/bin/bash           scripts/test-backup-local-config.sh   # 3.2, stock macOS
-/usr/local/bin/bash scripts/test-backup-local-config.sh   # 5.x, Homebrew
+/bin/bash                      scripts/test-backup-local-config.sh   # 3.2, stock macOS
+"$(brew --prefix)"/bin/bash    scripts/test-backup-local-config.sh   # 5.x, Homebrew
 ```
 
 ---
