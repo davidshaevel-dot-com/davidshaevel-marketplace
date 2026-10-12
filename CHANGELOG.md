@@ -4,13 +4,32 @@ Notable changes to the davidshaevel-agent-toolkit plugin. Version numbers are
 assigned at release time (see the policy in AGENTS.md); changes accumulate under
 **Unreleased** until a release folds them into a numbered section.
 
-## Unreleased
+## 2.0.1 — 2026-10-12
 
 ### Changed
 
-- README accuracy pass (TT-669): the Codex CLI section states what works today,
-  install and update steps use the CLI, no private links, and the backup detail
-  moved to `docs/backup-local-config.md`.
+- README accuracy pass for an external reader (TT-669, PR #15, `a804dba`): the
+  README now says what works where, installs and updates through the plugin CLIs,
+  and moves operator detail to `docs/`.
+  - Codex CLI section rewritten to the verified state: register the git
+    marketplace, `codex plugin add`, accept the hook trust prompt; a works / does
+    not work list (`backup-local-config` and the `session-handoff` backup step
+    fail because `${CLAUDE_PLUGIN_ROOT}` is empty under Codex;
+    `self-hosted-review` and the slash commands are Claude Code only).
+  - CLI-first install and update: `claude plugin marketplace add|update`,
+    `claude plugin install|update`, `codex plugin marketplace add|upgrade`,
+    `codex plugin add`, replacing the hand steps (cache clone, editing
+    `installed_plugins.json`).
+  - Private links and issue ids removed from the README.
+  - Backup detail moved verbatim to `docs/backup-local-config.md`; the README
+    keeps a summary and the link.
+  - The TT-553 spec's migration runbook step 7 gains `codex plugin add` and
+    `codex plugin remove` (renaming the config keys is not an install).
+  - Verification: `claude plugin validate .` passes, backup suite 109/0 under
+    `/bin/bash` 3.2 and Homebrew bash 5.3, one `codex exec` check with no hook
+    error.
+
+No runtime change: conventions, hooks, skills and manifests are unchanged apart from the version.
 
 ## 2.0.0 — 2026-10-09
 
