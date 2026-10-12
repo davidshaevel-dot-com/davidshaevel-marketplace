@@ -4,6 +4,14 @@ Notable changes to the davidshaevel-agent-toolkit plugin. Version numbers are
 assigned at release time (see the policy in AGENTS.md); changes accumulate under
 **Unreleased** until a release folds them into a numbered section.
 
+## Unreleased
+
+### Changed
+
+- README accuracy pass (TT-669): the Codex CLI section states what works today,
+  install and update steps use the CLI, no private links, and the backup detail
+  moved to `docs/backup-local-config.md`.
+
 ## 2.0.0 — 2026-10-09
 
 ### Changed (breaking)
