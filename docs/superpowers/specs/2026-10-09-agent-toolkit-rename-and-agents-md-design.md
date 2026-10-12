@@ -175,6 +175,13 @@ Subcommands were verified with `claude plugin help <cmd>` on Claude Code 2.1.295
 7. In `~/.codex/config.toml`, rename two keys:
    - `[plugins."davidshaevel-claude-toolkit@davidshaevel-marketplace"]` → `[plugins."davidshaevel-agent-toolkit@davidshaevel-marketplace"]`
    - `[hooks.state."davidshaevel-claude-toolkit@davidshaevel-marketplace:hooks/hooks-codex.json:session_start:0:0"]` → `[hooks.state."davidshaevel-agent-toolkit@davidshaevel-marketplace:hooks/hooks-codex.json:session_start:0:0"]`
+
+   Then install the new id and remove the old one:
+   ```bash
+   codex plugin add davidshaevel-agent-toolkit@davidshaevel-marketplace
+   codex plugin remove davidshaevel-claude-toolkit@davidshaevel-marketplace
+   ```
+   Renaming the `[plugins.*]` and `hooks.state` keys is not an install: `codex plugin list` reported the new id "not installed" until `add` ran (added 2026-10-12, TT-669).
 8. Swap the name in laptop-maintenance's local settings:
    ```bash
    F=~/workspace/laptop-maintenance/main/.claude/settings.local.json
@@ -248,6 +255,7 @@ MAJOR: renaming the plugin renames every skill and command.
 - `claude plugin list` shows only the new id.
 - `backup-local-config.sh` runs from `…/davidshaevel-agent-toolkit/2.0.0/scripts/` and prints `Using config: ~/.claude/config/backup-config.json`.
 - A Codex session starts without a hook error.
+- 2026-10-12: found that runbook step 7's key rename left the new id "not installed" in `codex plugin list`; fixed the same day by `codex plugin add` + `codex plugin remove` (now part of step 7), after which a Codex session started without a hook error (TT-553, TT-669).
 
 ## Follow-on dispatches
 
